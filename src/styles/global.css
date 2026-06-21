@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import './tokens.css';
+
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: var(--font-ui);
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Thin borders via CSS var so Tailwind border utilities stay clean */
+  .border-thin {
+    border: var(--border);
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white rounded-2xl;
+    border: var(--border);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium transition-colors;
+    background-color: var(--color-header);
+    color: #ffffff;
+  }
+  .btn-primary:hover {
+    background-color: #0d1e2e;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-colors;
+    color: var(--color-text-muted);
+  }
+  .btn-ghost:hover {
+    background-color: rgba(15, 31, 28, 0.06);
+  }
+
+  .tab-pill {
+    @apply px-4 py-1.5 rounded-full text-sm font-medium cursor-pointer transition-colors;
+    color: var(--color-text-muted);
+  }
+  .tab-pill.active {
+    background-color: var(--color-header);
+    color: #ffffff;
+  }
+  .tab-pill:not(.active):hover {
+    background-color: rgba(15, 31, 28, 0.06);
+    color: var(--color-text);
+  }
+
+  .data-value {
+    font-family: var(--font-data);
+  }
+
+  .section-title {
+    @apply text-xs font-medium uppercase tracking-widest;
+    color: var(--color-text-muted);
+  }
+}

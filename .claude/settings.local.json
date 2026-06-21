@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/nickolsen/.nvm/versions/**)",
+      "Bash(npm create *)",
+      "Bash(npm install *)",
+      "Bash(npx tailwindcss *)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(npm run *)",
+      "Bash(mkdir -p /Users/nickolsen/cadenceiq/.claude && cat /Users/nickolsen/cadenceiq/.claude/launch.json 2>/dev/null || echo \"not found\")",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "Bash(Read /private/tmp/claude-501/-Users-nickolsen-cadenceiq/29648a4d-69e6-4d72-a077-b8bd5075393b/tasks/bywt3c080.output)",
+      "Bash(curl -s http://localhost:5173)",
+      "Bash(xargs kill -9)",
+      "mcp__729a6062-175f-4b04-b4c2-da18ce92a987__health",
+      "mcp__729a6062-175f-4b04-b4c2-da18ce92a987__eligibility",
+      "mcp__729a6062-175f-4b04-b4c2-da18ce92a987__get_athlete_profile",
+      "mcp__729a6062-175f-4b04-b4c2-da18ce92a987__list_activities",
+      "Bash(ls ~/Documents/Zwift/Activities/ 2>/dev/null | head -10 || echo \"no Zwift Activities folder\" *)",
+      "Bash(xxd ~/Documents/Zwift/Activities/2026-06-16-06-48-13.fit)",
+      "Read(//Users/nickolsen/Downloads/**)",
+      "Bash(node -e \"const gc = require\\('./node_modules/garmin-connect'\\); console.log\\(Object.keys\\(gc\\)\\)\")",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"const fp = require\\('./node_modules/fit-file-parser'\\); console.log\\(typeof fp, Object.keys\\(fp\\).join\\(', '\\)\\)\")",
+      "Bash(node api/server.cjs)",
+      "Bash(curl -s http://localhost:3001/api/activities?start=2026-06-01\\\\&end=2026-06-17\\\\&ftp=260)",
+      "Bash(node --input-type=commonjs -e ' *)",
+      "Bash(curl -s \"http://localhost:3001/api/activities?start=2026-06-01&end=2026-06-17&ftp=260\")",
+      "Bash(npx vite *)",
+      "Bash(python3 -)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
+    ]
+  }
+}

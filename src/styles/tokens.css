@@ -1,0 +1,42 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap');
+
+:root {
+  /* Colors */
+  --color-header:     #0F1F1C;
+  --color-accent:     #00C896;
+  --color-accent-dim: #00A87E;
+  --color-bg:         #F0F2F1;
+  --color-surface:    #FFFFFF;
+  --color-text:       #1A2421;
+  --color-text-muted: #637068;
+  --color-border:     rgba(15, 31, 28, 0.12);
+
+  /* Typography */
+  --font-ui:   'DM Sans', system-ui, sans-serif;
+  --font-data: 'DM Mono', 'Courier New', monospace;
+
+  /* Radius */
+  --radius-sm:  6px;
+  --radius-md:  12px;
+  --radius-lg:  18px;
+  --radius-xl:  24px;
+  --radius-full: 9999px;
+
+  /* Borders */
+  --border: 0.5px solid var(--color-border);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(15, 31, 28, 0.06);
+  --shadow-md: 0 4px 16px rgba(15, 31, 28, 0.08);
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+}
