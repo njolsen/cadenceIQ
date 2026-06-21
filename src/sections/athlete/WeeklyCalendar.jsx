@@ -212,7 +212,12 @@ export default function WeeklyCalendar({
   }
 
   function handleDaySelectItem(dateStr, itemId) {
-    setDayModal({ date: dateStr, mode: 'pick', addMode: false, selectedItemId: itemId })
+    const item = userWorkouts[dateStr]?.find(w => w.id === itemId)
+    if (item?.type === 'bike') {
+      setDayModal({ date: dateStr, mode: 'edit_bike', addMode: false, selectedItemId: itemId })
+    } else {
+      setDayModal({ date: dateStr, mode: 'pick', addMode: false, selectedItemId: itemId })
+    }
   }
 
   return (
@@ -270,7 +275,7 @@ export default function WeeklyCalendar({
           date={dayModal.date}
           mode={dayModal.mode}
           onSetMode={mode => setDayModal({ ...dayModal, mode })}
-          onSave={w => { handleSaveWorkout(dayModal.date, w); setDayModal({ date: dayModal.date, mode: 'pick', addMode: true }) }}
+          onSave={w => { handleSaveWorkout(dayModal.date, w); w.type === 'bike' ? setDayModal(null) : setDayModal({ date: dayModal.date, mode: 'pick', addMode: true }) }}
           onClose={() => setDayModal(null)}
           athleteFtp={athleteFtp}
           dayWorkouts={userWorkouts[dayModal.date] ?? []}
@@ -994,7 +999,7 @@ function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWo
           </div>
         )}
 
-        {/* Bike: WorkoutBuilder inside modal */}
+        {/* Bike: WorkoutBuilder inside modal — parent onSave handles close */}
         {mode === 'bike' && (
           <div className="p-4">
             <WorkoutBuilder
@@ -1002,7 +1007,7 @@ function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWo
               existing={null}
               ftp={athleteFtp}
               onClose={() => onSetMode('pick')}
-              onSave={w => onSave({ type: 'bike', name: w.name || 'Bike Workout', ...w })}
+              onSave={w => onSave({ ...w, type: 'bike', name: w.name || 'Bike Workout' })}
             />
           </div>
         )}
@@ -1020,18 +1025,22 @@ function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWo
           </div>
         )}
 
-        {/* Edit user-added bike workout via WorkoutBuilder */}
-        {mode === 'edit_bike' && editBikeItem && (
-          <div className="p-4">
-            <WorkoutBuilder
-              dateStr={date}
-              existing={editBikeItem}
-              ftp={athleteFtp}
-              onClose={() => { setEditBikeItem(null); onSetMode('pick') }}
-              onSave={w => { onUpdateWorkout({ ...editBikeItem, name: w.name || editBikeItem.name }); setEditBikeItem(null); onSetMode('pick') }}
-            />
-          </div>
-        )}
+        {/* Edit user-added bike workout — derive item from selectedItemId so clicking the tile mini-box opens WorkoutBuilder directly */}
+        {mode === 'edit_bike' && (() => {
+          const bikeItem = editBikeItem ?? dayWorkouts.find(w => w.id === selectedItemId)
+          if (!bikeItem) return null
+          return (
+            <div className="p-4">
+              <WorkoutBuilder
+                dateStr={date}
+                existing={bikeItem}
+                ftp={athleteFtp}
+                onClose={() => { setEditBikeItem(null); onClose() }}
+                onSave={w => { onUpdateWorkout({ ...bikeItem, ...w, id: bikeItem.id, type: 'bike', name: w.name || bikeItem.name }); setEditBikeItem(null); onClose() }}
+              />
+            </div>
+          )
+        })()}
 
         {/* Gym form */}
         {mode === 'gym' && (
@@ -1740,16 +1749,16 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
     }
   }
 
-  const [name,          setName]          = useState(existing?.type ?? '')
-  const [blocks,        setBlocks]        = useState([])
+  const [name,          setName]          = useState(existing?.name ?? existing?.type ?? '')
+  const [blocks,        setBlocks]        = useState(existing?.blocks ?? [])
   // Workout-level intensity
-  const [intensityMode, setIntensityMode] = useState('ftp_pct')
-  const [ftpPct,        setFtpPct]        = useState(80)
-  const [powerLow,      setPowerLow]      = useState(200)
-  const [powerHigh,     setPowerHigh]     = useState(250)
-  const [hrPct,         setHrPct]         = useState(75)
-  const [hrLow,         setHrLow]         = useState(140)
-  const [hrHigh,        setHrHigh]        = useState(160)
+  const [intensityMode, setIntensityMode] = useState(existing?.intensityMode ?? 'ftp_pct')
+  const [ftpPct,        setFtpPct]        = useState(existing?.ftpPct ?? 80)
+  const [powerLow,      setPowerLow]      = useState(existing?.powerLow ?? 200)
+  const [powerHigh,     setPowerHigh]     = useState(existing?.powerHigh ?? 250)
+  const [hrPct,         setHrPct]         = useState(existing?.hrPct ?? 75)
+  const [hrLow,         setHrLow]         = useState(existing?.hrLow ?? 140)
+  const [hrHigh,        setHrHigh]        = useState(existing?.hrHigh ?? 160)
 
   const totalMin = blocks.reduce((s, b) => s + calcBlockDuration(b), 0)
 
@@ -2052,7 +2061,7 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
             <span className="text-base">⚡</span> Send to Zwift
           </button>
           <button
-            onClick={() => { if (onSave) onSave({ name }); onClose() }}
+            onClick={() => { if (onSave) onSave({ name, blocks, intensityMode, ftpPct, powerLow, powerHigh, hrPct, hrLow, hrHigh, totalMin }); else onClose() }}
             className="flex-1 py-2 rounded-full text-sm font-semibold"
             style={{ backgroundColor: 'var(--color-header)', color: 'var(--color-accent)' }}>
             Save workout
