@@ -263,6 +263,8 @@ export default function WeeklyCalendar({
           onRemoveItem={handleRemoveWorkout}
           onCopyItem={item => setCopiedItem(item)}
           onSkipSession={dateStr => handleUpdateSession(dateStr, { skipped: true })}
+          onPasteToDay={dateStr => { if (copiedItem) { const { id, ...rest } = copiedItem; handleSaveWorkout(dateStr, rest); setCopiedItem(null) } }}
+          copiedItem={copiedItem}
           getDaySummary={getDaySummary}
           userWorkouts={userWorkouts}
           sessionOverrides={sessionOverrides}
@@ -410,7 +412,7 @@ const MONTHS_RANGE = (() => {
 
 // ─── Month view (continuous scroll) ──────────────────────────────────────────
 
-function MonthView({ year, month, allEvents, seasonData, onDaySelect, onDayAdd, onDaySelectItem, onRemoveItem, onCopyItem, onSkipSession, getDaySummary, userWorkouts, sessionOverrides }) {
+function MonthView({ year, month, allEvents, seasonData, onDaySelect, onDayAdd, onDaySelectItem, onRemoveItem, onCopyItem, onSkipSession, onPasteToDay, getDaySummary, userWorkouts, sessionOverrides, copiedItem }) {
   const today = '2026-06-20'
   const races = seasonData?.races ?? []
   const [displayYear, setDisplayYear] = useState(year)
@@ -538,13 +540,14 @@ function MonthView({ year, month, allEvents, seasonData, onDaySelect, onDayAdd, 
                         return (
                           <button
                             key={dateStr}
-                            onClick={() => onDaySelect(dateStr)}
+                            onClick={() => copiedItem ? onPasteToDay(dateStr) : onDaySelect(dateStr)}
                             className="relative flex flex-col rounded-2xl text-left transition-all overflow-hidden group"
                             style={{
-                              backgroundColor: '#FFFFFF',
-                              border: isToday ? '2px solid #FF2D78' : '1px solid #0A1628',
+                              backgroundColor: copiedItem ? 'rgba(0,200,150,0.03)' : '#FFFFFF',
+                              border: copiedItem ? '1px dashed rgba(0,200,150,0.5)' : isToday ? '2px solid #FF2D78' : '1px solid #0A1628',
                               padding: '10px 10px 26px 10px',
                               height: '170px',
+                              cursor: copiedItem ? 'copy' : 'pointer',
                             }}
                           >
                             {/* Date + tick */}
@@ -643,6 +646,10 @@ function MonthView({ year, month, allEvents, seasonData, onDaySelect, onDayAdd, 
                                     <span className="data-value text-sm font-bold" style={{ color: 'var(--color-text)' }}>{(planSecs / 3600).toFixed(1)}</span>
                                     <span className="text-[10px] uppercase" style={{ color: 'var(--color-text-muted)' }}>h</span>
                                   </div>
+                                  <div className="flex items-baseline gap-0.5">
+                                    <span className="data-value text-sm font-bold" style={{ color: 'var(--color-text-muted)' }}>—</span>
+                                    <span className="text-[10px] uppercase" style={{ color: 'var(--color-text-muted)' }}>mi</span>
+                                  </div>
                                 </>
                               ) : (
                                 <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>—</span>
@@ -660,12 +667,14 @@ function MonthView({ year, month, allEvents, seasonData, onDaySelect, onDayAdd, 
                                     <span className="data-value text-sm font-bold" style={{ color: '#00A87E' }}>{(actSecs / 3600).toFixed(1)}</span>
                                     <span className="text-[10px] uppercase" style={{ color: 'rgba(0,168,126,0.6)' }}>h</span>
                                   </div>
-                                  {actMiles > 0 && (
-                                    <div className="flex items-baseline gap-0.5">
+                                  <div className="flex items-baseline gap-0.5">
+                                    {actMiles > 0 ? (
                                       <span className="data-value text-sm font-bold" style={{ color: '#00A87E' }}>{actMiles.toFixed(0)}</span>
-                                      <span className="text-[10px] uppercase" style={{ color: 'rgba(0,168,126,0.6)' }}>mi</span>
-                                    </div>
-                                  )}
+                                    ) : (
+                                      <span className="data-value text-sm font-bold" style={{ color: 'rgba(0,168,126,0.4)' }}>—</span>
+                                    )}
+                                    <span className="text-[10px] uppercase" style={{ color: 'rgba(0,168,126,0.6)' }}>mi</span>
+                                  </div>
                                 </>
                               ) : (
                                 <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>—</span>
@@ -980,19 +989,6 @@ function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWo
                       <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Add a race or event</p>
                     </div>
                   </button>
-                  {copiedItem && (
-                    <button onClick={onPasteItem}
-                      className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-left"
-                      style={{ border: '1px dashed rgba(0,200,150,0.5)', backgroundColor: 'rgba(0,200,150,0.04)' }}>
-                      <span className="text-base">⎘</span>
-                      <div>
-                        <p className="font-semibold text-sm" style={{ color: '#00A87E' }}>
-                          Paste — {copiedItem.name || (copiedItem.type === 'bike' ? 'Bike Workout' : copiedItem.type === 'gym' ? 'Gym Session' : 'Event')}
-                        </p>
-                        <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Add a copy to this day</p>
-                      </div>
-                    </button>
-                  )}
                 </div>
               </>
             )}
@@ -1719,22 +1715,29 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
     switch (b.type) {
       case 'hard_easy':
         return Array.from({ length: s }, () => [
-          { dur: b.workMin ?? 4, v: 0.88 }, { dur: b.restMin ?? 2, v: 0.28 },
+          { dur: b.workMin ?? 4, v: (b.workFtpPct ?? 95) / 100 },
+          { dur: b.restMin ?? 2, v: (b.restFtpPct ?? 55) / 100 },
         ]).flat()
       case 'hard_harder_easy':
         return Array.from({ length: s }, () => [
-          { dur: b.hardMin ?? 3, v: 0.78 }, { dur: b.harderMin ?? 2, v: 0.96 }, { dur: b.easyMin ?? 2, v: 0.22 },
+          { dur: b.hardMin ?? 3,   v: (b.hardFtpPct ?? 85) / 100 },
+          { dur: b.harderMin ?? 2, v: (b.harderFtpPct ?? 100) / 100 },
+          { dur: b.easyMin ?? 2,   v: (b.easyFtpPct ?? 50) / 100 },
         ]).flat()
-      case 'ramp_up':
+      case 'ramp_up': {
+        const lo = (b.ftpLow ?? 35) / 100, hi = (b.ftpHigh ?? 88) / 100
         return Array.from({ length: st }, (_, i) => ({
-          dur: b.stepMin ?? 5, v: 0.35 + (i / Math.max(st - 1, 1)) * 0.60,
+          dur: b.stepMin ?? 5, v: lo + (i / Math.max(st - 1, 1)) * (hi - lo),
         }))
-      case 'ramp_down':
+      }
+      case 'ramp_down': {
+        const hi = (b.ftpHigh ?? 88) / 100, lo = (b.ftpLow ?? 35) / 100
         return Array.from({ length: st }, (_, i) => ({
-          dur: b.stepMin ?? 5, v: 0.95 - (i / Math.max(st - 1, 1)) * 0.60,
+          dur: b.stepMin ?? 5, v: hi - (i / Math.max(st - 1, 1)) * (hi - lo),
         }))
+      }
       default:
-        return INTERVAL_SHAPE[b.type] ?? [{ dur: 1, v: 0.6 }]
+        return [{ dur: b.durationMin ?? 15, v: (b.ftpPct ?? 60) / 100 }]
     }
   }
 
@@ -1764,13 +1767,13 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
 
   function addBlock(typeId) {
     const defaults = {
-      warmup:           { durationMin: 15 },
-      cooldown:         { durationMin: 10 },
-      recovery:         { durationMin: 20 },
-      hard_easy:        { sets: 4, workMin: 4, restMin: 2 },
-      hard_harder_easy: { sets: 3, hardMin: 3, harderMin: 2, easyMin: 2 },
-      ramp_up:          { steps: 4, stepMin: 5 },
-      ramp_down:        { steps: 4, stepMin: 5 },
+      warmup:           { durationMin: 15, ftpPct: 60 },
+      cooldown:         { durationMin: 10, ftpPct: 50 },
+      recovery:         { durationMin: 20, ftpPct: 40 },
+      hard_easy:        { sets: 4, workMin: 4, restMin: 2, workFtpPct: 95, restFtpPct: 55 },
+      hard_harder_easy: { sets: 3, hardMin: 3, harderMin: 2, easyMin: 2, hardFtpPct: 85, harderFtpPct: 100, easyFtpPct: 50 },
+      ramp_up:          { steps: 4, stepMin: 5, ftpLow: 35, ftpHigh: 88 },
+      ramp_down:        { steps: 4, stepMin: 5, ftpHigh: 88, ftpLow: 35 },
     }
     setBlocks(prev => [...prev, { id: Date.now() + Math.random(), type: typeId, ...defaults[typeId] }])
   }
@@ -1914,99 +1917,209 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
                         style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}>✕</button>
                     </div>
 
-                    {/* Config row — duration stepper for simple types, interval config for structured */}
-                    <div className="px-3 py-2">
+                    {/* Config row — duration + intensity for simple types, interval config for structured */}
+                    <div className="px-3 py-2 space-y-2">
                       {!isStructured && (
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-[10px] mr-1" style={{ color: 'var(--color-text-muted)' }}>Duration</p>
-                          <Stepper
-                            val={block.durationMin}
-                            onDec={() => updateBlock(block.id, { durationMin: Math.max(5, block.durationMin - 5) })}
-                            onInc={() => updateBlock(block.id, { durationMin: Math.min(120, block.durationMin + 5) })}
-                            minW="w-10"
-                          />
-                        </div>
+                        <>
+                          <div className="flex items-center gap-4 flex-wrap">
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>Duration</p>
+                              <Stepper
+                                val={block.durationMin}
+                                onDec={() => updateBlock(block.id, { durationMin: Math.max(5, block.durationMin - 5) })}
+                                onInc={() => updateBlock(block.id, { durationMin: Math.min(120, block.durationMin + 5) })}
+                                minW="w-10"
+                              />
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>% FTP</p>
+                              <Stepper
+                                val={block.ftpPct ?? 60}
+                                suffix="%"
+                                onDec={() => updateBlock(block.id, { ftpPct: Math.max(10, (block.ftpPct ?? 60) - 5) })}
+                                onInc={() => updateBlock(block.id, { ftpPct: Math.min(120, (block.ftpPct ?? 60) + 5) })}
+                                minW="w-10"
+                              />
+                              {ftp > 0 && (
+                                <span className="data-value text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+                                  {Math.round((block.ftpPct ?? 60) / 100 * ftp)}w
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </>
                       )}
 
                       {block.type === 'hard_easy' && (
-                        <div className="flex items-center gap-3 flex-wrap">
-                          <div>
-                            <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Sets</p>
-                            <Stepper val={block.sets ?? 4} suffix=""
-                              onDec={() => updateBlock(block.id, { sets: Math.max(1, (block.sets ?? 4) - 1) })}
-                              onInc={() => updateBlock(block.id, { sets: Math.min(20, (block.sets ?? 4) + 1) })} />
+                        <>
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <div>
+                              <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Sets</p>
+                              <Stepper val={block.sets ?? 4} suffix=""
+                                onDec={() => updateBlock(block.id, { sets: Math.max(1, (block.sets ?? 4) - 1) })}
+                                onInc={() => updateBlock(block.id, { sets: Math.min(20, (block.sets ?? 4) + 1) })} />
+                            </div>
+                            <span className="text-xs mt-4" style={{ color: 'var(--color-text-muted)' }}>×</span>
+                            <div>
+                              <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Work</p>
+                              <Stepper val={block.workMin ?? 4}
+                                onDec={() => updateBlock(block.id, { workMin: Math.max(1, (block.workMin ?? 4) - 1) })}
+                                onInc={() => updateBlock(block.id, { workMin: Math.min(30, (block.workMin ?? 4) + 1) })} />
+                            </div>
+                            <div>
+                              <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Rest</p>
+                              <Stepper val={block.restMin ?? 2}
+                                onDec={() => updateBlock(block.id, { restMin: Math.max(1, (block.restMin ?? 2) - 1) })}
+                                onInc={() => updateBlock(block.id, { restMin: Math.min(20, (block.restMin ?? 2) + 1) })} />
+                            </div>
+                            <p className="text-[10px] mt-4 data-value" style={{ color: 'var(--color-text-muted)' }}>
+                              = {fmtMin(dur)} total
+                            </p>
                           </div>
-                          <span className="text-xs mt-4" style={{ color: 'var(--color-text-muted)' }}>×</span>
-                          <div>
-                            <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Work</p>
-                            <Stepper val={block.workMin ?? 4}
-                              onDec={() => updateBlock(block.id, { workMin: Math.max(1, (block.workMin ?? 4) - 1) })}
-                              onInc={() => updateBlock(block.id, { workMin: Math.min(30, (block.workMin ?? 4) + 1) })} />
+                          <div className="flex items-center gap-4 flex-wrap pt-1" style={{ borderTop: '0.5px solid rgba(15,31,28,0.06)' }}>
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>Work % FTP</p>
+                              <Stepper val={block.workFtpPct ?? 95} suffix="%"
+                                onDec={() => updateBlock(block.id, { workFtpPct: Math.max(50, (block.workFtpPct ?? 95) - 5) })}
+                                onInc={() => updateBlock(block.id, { workFtpPct: Math.min(150, (block.workFtpPct ?? 95) + 5) })}
+                                minW="w-10" />
+                              {ftp > 0 && <span className="data-value text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{Math.round((block.workFtpPct ?? 95) / 100 * ftp)}w</span>}
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>Rest % FTP</p>
+                              <Stepper val={block.restFtpPct ?? 55} suffix="%"
+                                onDec={() => updateBlock(block.id, { restFtpPct: Math.max(10, (block.restFtpPct ?? 55) - 5) })}
+                                onInc={() => updateBlock(block.id, { restFtpPct: Math.min(100, (block.restFtpPct ?? 55) + 5) })}
+                                minW="w-10" />
+                              {ftp > 0 && <span className="data-value text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{Math.round((block.restFtpPct ?? 55) / 100 * ftp)}w</span>}
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Rest</p>
-                            <Stepper val={block.restMin ?? 2}
-                              onDec={() => updateBlock(block.id, { restMin: Math.max(1, (block.restMin ?? 2) - 1) })}
-                              onInc={() => updateBlock(block.id, { restMin: Math.min(20, (block.restMin ?? 2) + 1) })} />
-                          </div>
-                          <p className="text-[10px] mt-4 data-value" style={{ color: 'var(--color-text-muted)' }}>
-                            = {fmtMin(dur)} total
-                          </p>
-                        </div>
+                        </>
                       )}
 
                       {block.type === 'hard_harder_easy' && (
-                        <div className="flex items-center gap-3 flex-wrap">
-                          <div>
-                            <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Sets</p>
-                            <Stepper val={block.sets ?? 3} suffix=""
-                              onDec={() => updateBlock(block.id, { sets: Math.max(1, (block.sets ?? 3) - 1) })}
-                              onInc={() => updateBlock(block.id, { sets: Math.min(10, (block.sets ?? 3) + 1) })} />
+                        <>
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <div>
+                              <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Sets</p>
+                              <Stepper val={block.sets ?? 3} suffix=""
+                                onDec={() => updateBlock(block.id, { sets: Math.max(1, (block.sets ?? 3) - 1) })}
+                                onInc={() => updateBlock(block.id, { sets: Math.min(10, (block.sets ?? 3) + 1) })} />
+                            </div>
+                            <span className="text-xs mt-4" style={{ color: 'var(--color-text-muted)' }}>×</span>
+                            <div>
+                              <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Hard</p>
+                              <Stepper val={block.hardMin ?? 3}
+                                onDec={() => updateBlock(block.id, { hardMin: Math.max(1, (block.hardMin ?? 3) - 1) })}
+                                onInc={() => updateBlock(block.id, { hardMin: Math.min(20, (block.hardMin ?? 3) + 1) })} />
+                            </div>
+                            <div>
+                              <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Harder</p>
+                              <Stepper val={block.harderMin ?? 2}
+                                onDec={() => updateBlock(block.id, { harderMin: Math.max(1, (block.harderMin ?? 2) - 1) })}
+                                onInc={() => updateBlock(block.id, { harderMin: Math.min(20, (block.harderMin ?? 2) + 1) })} />
+                            </div>
+                            <div>
+                              <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Easy</p>
+                              <Stepper val={block.easyMin ?? 2}
+                                onDec={() => updateBlock(block.id, { easyMin: Math.max(1, (block.easyMin ?? 2) - 1) })}
+                                onInc={() => updateBlock(block.id, { easyMin: Math.min(20, (block.easyMin ?? 2) + 1) })} />
+                            </div>
+                            <p className="text-[10px] mt-4 data-value" style={{ color: 'var(--color-text-muted)' }}>
+                              = {fmtMin(dur)} total
+                            </p>
                           </div>
-                          <span className="text-xs mt-4" style={{ color: 'var(--color-text-muted)' }}>×</span>
-                          <div>
-                            <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Hard</p>
-                            <Stepper val={block.hardMin ?? 3}
-                              onDec={() => updateBlock(block.id, { hardMin: Math.max(1, (block.hardMin ?? 3) - 1) })}
-                              onInc={() => updateBlock(block.id, { hardMin: Math.min(20, (block.hardMin ?? 3) + 1) })} />
+                          <div className="flex items-center gap-4 flex-wrap pt-1" style={{ borderTop: '0.5px solid rgba(15,31,28,0.06)' }}>
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>Hard % FTP</p>
+                              <Stepper val={block.hardFtpPct ?? 85} suffix="%"
+                                onDec={() => updateBlock(block.id, { hardFtpPct: Math.max(50, (block.hardFtpPct ?? 85) - 5) })}
+                                onInc={() => updateBlock(block.id, { hardFtpPct: Math.min(150, (block.hardFtpPct ?? 85) + 5) })}
+                                minW="w-10" />
+                              {ftp > 0 && <span className="data-value text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{Math.round((block.hardFtpPct ?? 85) / 100 * ftp)}w</span>}
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>Harder % FTP</p>
+                              <Stepper val={block.harderFtpPct ?? 100} suffix="%"
+                                onDec={() => updateBlock(block.id, { harderFtpPct: Math.max(50, (block.harderFtpPct ?? 100) - 5) })}
+                                onInc={() => updateBlock(block.id, { harderFtpPct: Math.min(150, (block.harderFtpPct ?? 100) + 5) })}
+                                minW="w-10" />
+                              {ftp > 0 && <span className="data-value text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{Math.round((block.harderFtpPct ?? 100) / 100 * ftp)}w</span>}
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>Easy % FTP</p>
+                              <Stepper val={block.easyFtpPct ?? 50} suffix="%"
+                                onDec={() => updateBlock(block.id, { easyFtpPct: Math.max(10, (block.easyFtpPct ?? 50) - 5) })}
+                                onInc={() => updateBlock(block.id, { easyFtpPct: Math.min(100, (block.easyFtpPct ?? 50) + 5) })}
+                                minW="w-10" />
+                              {ftp > 0 && <span className="data-value text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{Math.round((block.easyFtpPct ?? 50) / 100 * ftp)}w</span>}
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Harder</p>
-                            <Stepper val={block.harderMin ?? 2}
-                              onDec={() => updateBlock(block.id, { harderMin: Math.max(1, (block.harderMin ?? 2) - 1) })}
-                              onInc={() => updateBlock(block.id, { harderMin: Math.min(20, (block.harderMin ?? 2) + 1) })} />
-                          </div>
-                          <div>
-                            <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Easy</p>
-                            <Stepper val={block.easyMin ?? 2}
-                              onDec={() => updateBlock(block.id, { easyMin: Math.max(1, (block.easyMin ?? 2) - 1) })}
-                              onInc={() => updateBlock(block.id, { easyMin: Math.min(20, (block.easyMin ?? 2) + 1) })} />
-                          </div>
-                          <p className="text-[10px] mt-4 data-value" style={{ color: 'var(--color-text-muted)' }}>
-                            = {fmtMin(dur)} total
-                          </p>
-                        </div>
+                        </>
                       )}
 
                       {(block.type === 'ramp_up' || block.type === 'ramp_down') && (
-                        <div className="flex items-center gap-3 flex-wrap">
-                          <div>
-                            <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Steps</p>
-                            <Stepper val={block.steps ?? 4} suffix=""
-                              onDec={() => updateBlock(block.id, { steps: Math.max(2, (block.steps ?? 4) - 1) })}
-                              onInc={() => updateBlock(block.id, { steps: Math.min(12, (block.steps ?? 4) + 1) })} />
+                        <>
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <div>
+                              <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Steps</p>
+                              <Stepper val={block.steps ?? 4} suffix=""
+                                onDec={() => updateBlock(block.id, { steps: Math.max(2, (block.steps ?? 4) - 1) })}
+                                onInc={() => updateBlock(block.id, { steps: Math.min(12, (block.steps ?? 4) + 1) })} />
+                            </div>
+                            <span className="text-xs mt-4" style={{ color: 'var(--color-text-muted)' }}>×</span>
+                            <div>
+                              <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Per step</p>
+                              <Stepper val={block.stepMin ?? 5}
+                                onDec={() => updateBlock(block.id, { stepMin: Math.max(1, (block.stepMin ?? 5) - 1) })}
+                                onInc={() => updateBlock(block.id, { stepMin: Math.min(20, (block.stepMin ?? 5) + 1) })} />
+                            </div>
+                            <p className="text-[10px] mt-4 data-value" style={{ color: 'var(--color-text-muted)' }}>
+                              = {fmtMin(dur)} total
+                            </p>
                           </div>
-                          <span className="text-xs mt-4" style={{ color: 'var(--color-text-muted)' }}>×</span>
-                          <div>
-                            <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Per step</p>
-                            <Stepper val={block.stepMin ?? 5}
-                              onDec={() => updateBlock(block.id, { stepMin: Math.max(1, (block.stepMin ?? 5) - 1) })}
-                              onInc={() => updateBlock(block.id, { stepMin: Math.min(20, (block.stepMin ?? 5) + 1) })} />
+                          <div className="flex items-center gap-4 flex-wrap pt-1" style={{ borderTop: '0.5px solid rgba(15,31,28,0.06)' }}>
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{block.type === 'ramp_up' ? 'Start' : 'Start'} % FTP</p>
+                              <Stepper
+                                val={block.type === 'ramp_up' ? (block.ftpLow ?? 35) : (block.ftpHigh ?? 88)}
+                                suffix="%"
+                                onDec={() => block.type === 'ramp_up'
+                                  ? updateBlock(block.id, { ftpLow: Math.max(10, (block.ftpLow ?? 35) - 5) })
+                                  : updateBlock(block.id, { ftpHigh: Math.max(40, (block.ftpHigh ?? 88) - 5) })}
+                                onInc={() => block.type === 'ramp_up'
+                                  ? updateBlock(block.id, { ftpLow: Math.min(80, (block.ftpLow ?? 35) + 5) })
+                                  : updateBlock(block.id, { ftpHigh: Math.min(150, (block.ftpHigh ?? 88) + 5) })}
+                                minW="w-10"
+                              />
+                              {ftp > 0 && (
+                                <span className="data-value text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+                                  {Math.round((block.type === 'ramp_up' ? (block.ftpLow ?? 35) : (block.ftpHigh ?? 88)) / 100 * ftp)}w
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-xs mt-0" style={{ color: 'var(--color-text-muted)' }}>→</span>
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>End % FTP</p>
+                              <Stepper
+                                val={block.type === 'ramp_up' ? (block.ftpHigh ?? 88) : (block.ftpLow ?? 35)}
+                                suffix="%"
+                                onDec={() => block.type === 'ramp_up'
+                                  ? updateBlock(block.id, { ftpHigh: Math.max(40, (block.ftpHigh ?? 88) - 5) })
+                                  : updateBlock(block.id, { ftpLow: Math.max(10, (block.ftpLow ?? 35) - 5) })}
+                                onInc={() => block.type === 'ramp_up'
+                                  ? updateBlock(block.id, { ftpHigh: Math.min(150, (block.ftpHigh ?? 88) + 5) })
+                                  : updateBlock(block.id, { ftpLow: Math.min(80, (block.ftpLow ?? 35) + 5) })}
+                                minW="w-10"
+                              />
+                              {ftp > 0 && (
+                                <span className="data-value text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+                                  {Math.round((block.type === 'ramp_up' ? (block.ftpHigh ?? 88) : (block.ftpLow ?? 35)) / 100 * ftp)}w
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <p className="text-[10px] mt-4 data-value" style={{ color: 'var(--color-text-muted)' }}>
-                            = {fmtMin(dur)} total
-                          </p>
-                        </div>
+                        </>
                       )}
                     </div>
                   </div>
