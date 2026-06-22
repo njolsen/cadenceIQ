@@ -59,45 +59,83 @@ export default function AthleteSection() {
     setActiveTab('Calendar')
   }
 
-  return (
-    <div className="max-w-6xl mx-auto px-6 py-6">
-      {/* Page header */}
-      <div className="flex items-end justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <Avatar firstName={profile.firstName} lastName={profile.lastName} avatarUrl={profile.avatarUrl} size={52} />
-          <div>
-            <p className="section-title mb-1">Athlete</p>
-            <h1 className="text-2xl font-semibold">{profile.firstName} {profile.lastName}</h1>
+  const pageHeader = (
+    <div className="flex items-end justify-between mb-6">
+      <div className="flex items-center gap-3">
+        <Avatar firstName={profile.firstName} lastName={profile.lastName} avatarUrl={profile.avatarUrl} size={52} />
+        <div>
+          <p className="section-title mb-1">Athlete</p>
+          <h1 className="text-2xl font-semibold">{profile.firstName} {profile.lastName}</h1>
+        </div>
+      </div>
+      <span
+        className="text-xs px-3 py-1 rounded-full font-medium"
+        style={{ backgroundColor: 'rgba(0,200,150,0.12)', color: 'var(--color-accent-dim)' }}
+      >
+        Cat 1 Road
+      </span>
+    </div>
+  )
+
+  const subTabs = (
+    <div
+      className="flex items-center gap-0.5 px-1.5 py-1.5 rounded-2xl mb-6"
+      style={{ backgroundColor: '#0A1628' }}
+    >
+      {TABS.map(tab => (
+        <button
+          key={tab}
+          onClick={() => setActiveTab(tab)}
+          className="px-4 py-1.5 rounded-xl text-sm font-medium transition-all"
+          style={{
+            backgroundColor: activeTab === tab ? '#ffffff' : 'transparent',
+            color:            activeTab === tab ? '#0A1628' : '#ffffff',
+          }}
+        >
+          {tab}
+        </button>
+      ))}
+    </div>
+  )
+
+  if (activeTab === 'Training & Racing Calendar') {
+    return (
+      <div className="h-full flex flex-col overflow-hidden">
+        {/* Static: header + tabs + season arc */}
+        <div className="shrink-0 max-w-6xl w-full mx-auto px-6 pt-6">
+          {pageHeader}
+          {subTabs}
+          <div className="card mb-4 px-6 py-3">
+            <SeasonArc seasonData={seasonData} onSetupSeason={() => setShowSeasonModal(true)} />
           </div>
         </div>
-        <span
-          className="text-xs px-3 py-1 rounded-full font-medium"
-          style={{ backgroundColor: 'rgba(0,200,150,0.12)', color: 'var(--color-accent-dim)' }}
-        >
-          Cat 1 Road
-        </span>
+        {/* Scrollable: calendar only */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-6xl mx-auto px-6 pb-6">
+            <WeeklyCalendar
+              seasonData={seasonData}
+              onSetupSeason={() => setShowSeasonModal(true)}
+              highlightDay={highlightDay}
+              onClearHighlight={() => setHighlightDay(null)}
+              activityByDate={activityByDate}
+              athleteFtp={profile.ftp}
+            />
+          </div>
+        </div>
+        {showSeasonModal && (
+          <SeasonSetupModal
+            onClose={() => setShowSeasonModal(false)}
+            onConfirm={data => { setSeasonData(data); setShowSeasonModal(false) }}
+          />
+        )}
       </div>
+    )
+  }
 
-      {/* Sub-tabs */}
-      <div
-        className="flex items-center gap-0.5 px-1.5 py-1.5 rounded-2xl mb-6"
-        style={{ backgroundColor: '#0A1628' }}
-      >
-        {TABS.map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className="px-4 py-1.5 rounded-xl text-sm font-medium transition-all"
-            style={{
-              backgroundColor: activeTab === tab ? '#ffffff' : 'transparent',
-              color:            activeTab === tab ? '#0A1628' : '#ffffff',
-            }}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
-
+  return (
+    <div className="max-w-6xl mx-auto px-6 py-6">
+      {pageHeader}
+      {subTabs}
       {activeTab === 'Overview' && (
         <OverviewTab
           seasonData={seasonData}
@@ -105,22 +143,6 @@ export default function AthleteSection() {
           onDayClick={goToCalendar}
         />
       )}
-      {activeTab === 'Training & Racing Calendar' && (
-        <>
-          <div className="card mb-4 px-6 py-3">
-            <SeasonArc seasonData={seasonData} onSetupSeason={() => setShowSeasonModal(true)} />
-          </div>
-          <WeeklyCalendar
-            seasonData={seasonData}
-            onSetupSeason={() => setShowSeasonModal(true)}
-            highlightDay={highlightDay}
-            onClearHighlight={() => setHighlightDay(null)}
-            activityByDate={activityByDate}
-            athleteFtp={profile.ftp}
-          />
-        </>
-      )}
-
       {showSeasonModal && (
         <SeasonSetupModal
           onClose={() => setShowSeasonModal(false)}

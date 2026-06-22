@@ -229,13 +229,6 @@ export default function WeeklyCalendar({
           <div>
             <h2 className="font-semibold text-lg">Training & Racing Calendar</h2>
           </div>
-          <button
-            onClick={() => setShowModal(true)}
-            className="btn-ghost text-xs px-3 py-1.5"
-            style={{ border: 'var(--border)' }}
-          >
-            + Life event
-          </button>
         </div>
       </div>
 
