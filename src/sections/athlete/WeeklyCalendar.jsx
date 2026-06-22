@@ -140,6 +140,8 @@ export default function WeeklyCalendar({
   onClearHighlight,
   activityByDate = {},
   athleteFtp = 295,
+  onAddCalendarEvent,
+  onRemoveCalendarEvent,
 }) {
   const [currentMonth, setCurrentMonth] = useState({ year: 2026, month: 5 }) // June 2026
   const [showModal, setShowModal]   = useState(false)
@@ -154,16 +156,24 @@ export default function WeeklyCalendar({
   }
 
   function handleSaveWorkout(dateStr, workout) {
+    const id = Date.now()
     setUserWorkouts(prev => ({
       ...prev,
-      [dateStr]: [...(prev[dateStr] ?? []), { id: Date.now(), ...workout }],
+      [dateStr]: [...(prev[dateStr] ?? []), { id, ...workout }],
     }))
+    if (workout.type === 'event') {
+      onAddCalendarEvent?.({ id, date: dateStr, name: workout.name, distance: workout.eventType, priority: workout.priority, location: workout.location, goal: '' })
+    }
   }
   function handleRemoveWorkout(dateStr, workoutId) {
+    const removed = userWorkouts[dateStr]?.find(w => w.id === workoutId)
     setUserWorkouts(prev => ({
       ...prev,
       [dateStr]: (prev[dateStr] ?? []).filter(w => w.id !== workoutId),
     }))
+    if (removed?.type === 'event') {
+      onRemoveCalendarEvent?.(workoutId)
+    }
   }
   function handleUpdateWorkout(dateStr, updatedWorkout) {
     setUserWorkouts(prev => ({

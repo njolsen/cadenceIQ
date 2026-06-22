@@ -42,6 +42,7 @@ export default function AthleteSection() {
   const [highlightDay, setHighlightDay] = useState(null)
   const [seasonData, setSeasonData]   = useState(DEFAULT_SEASON)
   const [showSeasonModal, setShowSeasonModal] = useState(false)
+  const [showSeasonDateModal, setShowSeasonDateModal] = useState(false)
   const [activityByDate, setActivityByDate] = useState({})
 
   useEffect(() => {
@@ -57,6 +58,20 @@ export default function AthleteSection() {
   function goToCalendar(dayIndex) {
     setHighlightDay(dayIndex)
     setActiveTab('Calendar')
+  }
+
+  function handleAddCalendarEvent(event) {
+    setSeasonData(prev => ({
+      ...prev,
+      races: [...(prev.races ?? []), event],
+    }))
+  }
+
+  function handleRemoveCalendarEvent(eventId) {
+    setSeasonData(prev => ({
+      ...prev,
+      races: (prev.races ?? []).filter(r => r.id !== eventId),
+    }))
   }
 
   const pageHeader = (
@@ -106,7 +121,7 @@ export default function AthleteSection() {
           {pageHeader}
           {subTabs}
           <div className="card mb-4 px-6 py-3">
-            <SeasonArc seasonData={seasonData} onSetupSeason={() => setShowSeasonModal(true)} />
+            <SeasonArc seasonData={seasonData} onEditDates={() => setShowSeasonDateModal(true)} />
           </div>
         </div>
         {/* Scrollable: calendar only */}
@@ -119,9 +134,18 @@ export default function AthleteSection() {
               onClearHighlight={() => setHighlightDay(null)}
               activityByDate={activityByDate}
               athleteFtp={profile.ftp}
+              onAddCalendarEvent={handleAddCalendarEvent}
+              onRemoveCalendarEvent={handleRemoveCalendarEvent}
             />
           </div>
         </div>
+        {showSeasonDateModal && (
+          <SeasonDateModal
+            season={seasonData.season}
+            onClose={() => setShowSeasonDateModal(false)}
+            onSave={season => { setSeasonData(prev => ({ ...prev, season })); setShowSeasonDateModal(false) }}
+          />
+        )}
         {showSeasonModal && (
           <SeasonSetupModal
             onClose={() => setShowSeasonModal(false)}
@@ -155,7 +179,7 @@ export default function AthleteSection() {
 
 // ─── Season Arc (shared between Overview + Calendar) ─────────────────────────
 
-export function SeasonArc({ seasonData, onSetupSeason, onRaceClick }) {
+export function SeasonArc({ seasonData, onEditDates, onSetupSeason, onRaceClick }) {
   if (!seasonData) {
     return (
       <div className="flex items-center gap-3 mb-1">
@@ -172,19 +196,23 @@ export function SeasonArc({ seasonData, onSetupSeason, onRaceClick }) {
     )
   }
 
-  const today = new Date('2026-05-31')
+  const today = new Date('2026-06-22')
   const start = new Date(seasonData.season.start)
   const end   = new Date(seasonData.season.end)
   const totalMs = end - start
   const elapsed = today - start
   const pct = Math.min(Math.max((elapsed / totalMs) * 100, 0), 100)
 
+  function racePct(dateStr) {
+    return Math.min(Math.max(((new Date(dateStr) - start) / totalMs) * 100, 0), 100)
+  }
+
   function daysUntil(dateStr) {
     const d = new Date(dateStr)
     return Math.ceil((d - today) / (1000 * 60 * 60 * 24))
   }
 
-  const upcoming = seasonData.races
+  const upcoming = (seasonData.races ?? [])
     .map(r => ({ ...r, days: daysUntil(r.date) }))
     .filter(r => r.days > 0)
     .sort((a, b) => a.days - b.days)
@@ -194,20 +222,43 @@ export function SeasonArc({ seasonData, onSetupSeason, onRaceClick }) {
       <span className="section-title whitespace-nowrap">Season</span>
       <div className="flex-1 relative h-1.5 rounded-full" style={{ backgroundColor: 'rgba(15,31,28,0.08)' }}>
         <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, backgroundColor: '#FF2D78' }} />
+        {/* Event/race dot markers */}
+        {(seasonData.races ?? []).map((r, i) => {
+          const rp = racePct(r.date)
+          const isA = r.priority === 'A race'
+          return (
+            <span
+              key={r.id ?? i}
+              title={`${r.name} · ${r.date}`}
+              style={{
+                position: 'absolute', top: '50%', transform: 'translateY(-50%)',
+                left: `${rp}%`, marginLeft: '-4px',
+                width: isA ? '10px' : '7px',
+                height: isA ? '10px' : '7px',
+                borderRadius: '50%',
+                backgroundColor: isA ? '#FF2D78' : 'rgba(15,31,28,0.35)',
+                border: '2px solid white',
+                display: 'inline-block',
+                zIndex: 1,
+              }}
+            />
+          )
+        })}
+        {/* Today marker */}
         <span
           className="absolute top-1/2 -translate-y-1/2"
           style={{
             left: `${pct}%`, marginLeft: '-4px',
             width: '8px', height: '8px', borderRadius: '50%',
             backgroundColor: '#FF2D78', border: '2px solid white',
-            display: 'inline-block',
+            display: 'inline-block', zIndex: 2,
           }}
         />
       </div>
       <div className="flex items-center gap-3 shrink-0">
-        {upcoming.slice(0, 2).map((r, i) => (
+        {upcoming.slice(0, 3).map((r, i) => (
           <button
-            key={r.name}
+            key={r.id ?? r.name}
             onClick={() => onRaceClick?.(r)}
             className="data-value text-xs font-medium transition-opacity hover:opacity-70"
             style={{ color: i === 0 ? '#FF2D78' : 'var(--color-text-muted)' }}
@@ -216,12 +267,58 @@ export function SeasonArc({ seasonData, onSetupSeason, onRaceClick }) {
           </button>
         ))}
         <button
-          onClick={onSetupSeason}
+          onClick={onEditDates ?? onSetupSeason}
           className="text-[11px] px-2 py-0.5 rounded-full transition-colors"
           style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text-muted)', border: 'var(--border)' }}
         >
           Edit
         </button>
+      </div>
+    </div>
+  )
+}
+
+function SeasonDateModal({ season, onClose, onSave }) {
+  const [start, setStart] = useState(season?.start ?? '')
+  const [end,   setEnd]   = useState(season?.end   ?? '')
+  const canSave = start && end && new Date(start) < new Date(end)
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: 'rgba(10,22,40,0.55)', backdropFilter: 'blur(4px)' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div className="w-full max-w-sm rounded-2xl p-6 relative" style={{ backgroundColor: '#FFFFFF', boxShadow: '0 8px 40px rgba(15,31,28,0.16)' }}>
+        <button onClick={onClose}
+          className="absolute top-5 right-5 w-7 h-7 rounded-full flex items-center justify-center text-sm"
+          style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}>✕</button>
+        <p className="font-semibold text-base mb-1">Season dates</p>
+        <p className="text-xs mb-5" style={{ color: 'var(--color-text-muted)' }}>Set the start and end of your racing season.</p>
+        <div className="space-y-4">
+          <div>
+            <p className="section-title mb-1.5">Season start</p>
+            <input type="date" value={start} onChange={e => setStart(e.target.value)}
+              className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+              style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }} />
+          </div>
+          <div>
+            <p className="section-title mb-1.5">Season end</p>
+            <input type="date" value={end} onChange={e => setEnd(e.target.value)}
+              className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+              style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }} />
+          </div>
+        </div>
+        <div className="flex gap-2 mt-6">
+          <button onClick={onClose}
+            className="flex-1 py-2 rounded-full text-sm font-medium"
+            style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text-muted)' }}>Cancel</button>
+          <button onClick={() => canSave && onSave({ start, end })}
+            className="flex-1 py-2 rounded-full text-sm font-semibold"
+            style={{ backgroundColor: canSave ? '#0A1628' : 'rgba(15,31,28,0.1)', color: canSave ? '#fff' : 'var(--color-text-muted)', cursor: canSave ? 'pointer' : 'not-allowed' }}>
+            Save
+          </button>
+        </div>
       </div>
     </div>
   )
