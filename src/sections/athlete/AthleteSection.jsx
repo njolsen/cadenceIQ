@@ -28,10 +28,7 @@ const INTENSITY_COLOR = {
 // Default season — pre-seeded so the arc renders immediately
 const DEFAULT_SEASON = {
   season: { start: '2026-01-01', end: '2026-11-30' },
-  races: [
-    { name: '70.3 Austin',   date: '2026-07-08', distance: '70.3 Half-Iron', priority: 'A race', goal: 'Sub 4:30', location: 'Austin, TX' },
-    { name: 'Galveston 70.3', date: '2026-09-05', distance: '70.3 Half-Iron', priority: 'B race', goal: '', location: 'Galveston, TX' },
-  ],
+  races: [],
 }
 
 // ─── Main section ─────────────────────────────────────────────────────────────
@@ -196,7 +193,7 @@ export function SeasonArc({ seasonData, onEditDates, onSetupSeason, onRaceClick 
     )
   }
 
-  const today = new Date('2026-06-22')
+  const today = new Date(new Date().toISOString().slice(0, 10))
   const start = new Date(seasonData.season.start)
   const end   = new Date(seasonData.season.end)
   const totalMs = end - start

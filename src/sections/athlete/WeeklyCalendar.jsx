@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { SeasonArc } from './AthleteSection'
 
+const TODAY = new Date().toISOString().slice(0, 10)
+
 // ─── Training plan data ───────────────────────────────────────────────────────
 // Full June 2026 training plan — keyed by ISO date string
 
-const TRAINING_PLAN = {
-  '2026-06-20': { type: 'Med Ride', sport: 'Ride', tss: 140, duration: '2h 20m', if_: 0.70, zone: 'Z2–3', intensity: 'med', status: 'On plan', note: 'Shorter long ride this recovery week. Same pace as usual, just less duration.' },
-}
+const TRAINING_PLAN = {}
 
 const LIFE_EVENTS = [
   { date: '2026-06-02', name: 'Team dinner', type: 'social', time: 'Evening' },
@@ -208,7 +208,7 @@ export default function WeeklyCalendar({
 
   // Week view derived state
   const WEEK_START = new Date('2026-05-31') // Sunday before Mon May 26?
-  const TODAY_STR  = '2026-06-20'
+  const TODAY_STR  = TODAY
 
   function handleDaySelect(dateStr) {
     const hasUserItems = (userWorkouts[dateStr]?.length ?? 0) > 0
@@ -357,7 +357,7 @@ function WeekView({ allEvents, selectedDate, onDaySelect, buildingDate, onBuild,
           const isActive    = selectedDate === date
           const dayEvents   = allEvents.filter(e => e.date === date)
 
-          const isToday   = date === '2026-06-02'
+          const isToday   = date === TODAY
           const selBg     = hasActivity ? colors.bg.replace(/[\d.]+\)$/, '0.22)') : 'rgba(15,31,28,0.10)'
           const selBorder = hasActivity ? colors.bar : 'rgba(15,31,28,0.35)'
 
@@ -416,7 +416,7 @@ const MONTHS_RANGE = (() => {
 // ─── Month view (continuous scroll) ──────────────────────────────────────────
 
 function MonthView({ year, month, allEvents, seasonData, onDaySelect, onDayAdd, onDaySelectItem, onRemoveItem, onCopyItem, onSkipSession, onPasteToDay, getDaySummary, userWorkouts, sessionOverrides, copiedItem }) {
-  const today = '2026-06-20'
+  const today = TODAY
   const races = seasonData?.races ?? []
   const [displayYear, setDisplayYear] = useState(year)
   const [displayMonth, setDisplayMonth] = useState(month)
@@ -546,7 +546,8 @@ function MonthView({ year, month, allEvents, seasonData, onDaySelect, onDayAdd, 
                         const session = TRAINING_PLAN[dateStr]
                         const actDay  = getDaySummary(dateStr)
                         const isToday = dateStr === today
-                        const race    = races.find(r => r.date === dateStr)
+                        // Only show race tile for hardcoded/pre-set races (no id); calendar-added events render via userWorkouts instead
+                        const race    = races.find(r => r.date === dateStr && !r.id)
                         const displayIntensity = actDay ? actDay.primary.intensity : session?.intensity
                         const dotColor = displayIntensity ? INTENSITY_COLOR[displayIntensity].bar : null
                         return (
