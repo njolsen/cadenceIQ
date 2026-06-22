@@ -519,10 +519,19 @@ function MonthView({ year, month, allEvents, seasonData, onDaySelect, onDayAdd, 
               {/* Week rows */}
               <div className="space-y-2">
                 {weeks.map((rowDays, wi) => {
+                  // Logged bike workouts from WorkoutBuilder (plan = what user built, no Strava needed)
+                  const userBikeMins = rowDays.reduce((s, d) => {
+                    if (!d) return s
+                    const wos = userWorkouts[isoDate(d)] ?? []
+                    return s + wos.filter(w => w.type === 'bike').reduce((t, w) => t + (w.totalMin ?? 0), 0)
+                  }, 0)
                   const planTSS  = rowDays.reduce((s, d) => { if (!d) return s; const ses = TRAINING_PLAN[isoDate(d)]; return s + (ses?.tss ?? 0) }, 0)
-                  const planSecs = rowDays.reduce((s, d) => { if (!d) return s; const ses = TRAINING_PLAN[isoDate(d)]; return s + (ses ? parsePlanSecs(ses.duration) : 0) }, 0)
+                  // Plan hours: prefer workout builder totalMin, fall back to TRAINING_PLAN duration
+                  const planSecs = userBikeMins > 0 ? userBikeMins * 60 : rowDays.reduce((s, d) => { if (!d) return s; const ses = TRAINING_PLAN[isoDate(d)]; return s + (ses ? parsePlanSecs(ses.duration) : 0) }, 0)
                   const actTSS   = rowDays.reduce((s, d) => { if (!d) return s; const a = getDaySummary(isoDate(d)); return s + (a?.totalTSS ?? 0) }, 0)
-                  const actSecs  = rowDays.reduce((s, d) => { if (!d) return s; const a = getDaySummary(isoDate(d)); return s + (a ? parsePlanSecs(a.totalDuration) : 0) }, 0)
+                  // Actual hours: Strava if available, else workout builder logged time
+                  const stravaActSecs = rowDays.reduce((s, d) => { if (!d) return s; const a = getDaySummary(isoDate(d)); return s + (a ? parsePlanSecs(a.totalDuration) : 0) }, 0)
+                  const actSecs  = stravaActSecs > 0 ? stravaActSecs : userBikeMins * 60
                   const actMiles = rowDays.reduce((s, d) => { if (!d) return s; const a = getDaySummary(isoDate(d)); return s + parseFloat(a?.totalDist ?? 0) }, 0)
 
                   return (
@@ -632,16 +641,18 @@ function MonthView({ year, month, allEvents, seasonData, onDaySelect, onDayAdd, 
 
                       {/* Week total */}
                       <div className="flex flex-col justify-center pl-3 gap-3">
-                        {(planTSS > 0 || actTSS > 0) && (
+                        {(planTSS > 0 || actTSS > 0 || userBikeMins > 0) && (
                           <>
                             <div>
                               <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>Plan</p>
-                              {planTSS > 0 ? (
+                              {planSecs > 0 ? (
                                 <>
-                                  <div className="flex items-baseline gap-0.5">
-                                    <span className="data-value text-sm font-bold" style={{ color: 'var(--color-text)' }}>{planTSS}</span>
-                                    <span className="text-[10px] uppercase" style={{ color: 'var(--color-text-muted)' }}>TSS</span>
-                                  </div>
+                                  {planTSS > 0 && (
+                                    <div className="flex items-baseline gap-0.5">
+                                      <span className="data-value text-sm font-bold" style={{ color: 'var(--color-text)' }}>{planTSS}</span>
+                                      <span className="text-[10px] uppercase" style={{ color: 'var(--color-text-muted)' }}>TSS</span>
+                                    </div>
+                                  )}
                                   <div className="flex items-baseline gap-0.5">
                                     <span className="data-value text-sm font-bold" style={{ color: 'var(--color-text)' }}>{(planSecs / 3600).toFixed(1)}</span>
                                     <span className="text-[10px] uppercase" style={{ color: 'var(--color-text-muted)' }}>h</span>
@@ -657,12 +668,14 @@ function MonthView({ year, month, allEvents, seasonData, onDaySelect, onDayAdd, 
                             </div>
                             <div>
                               <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: '#00A87E', letterSpacing: '0.06em' }}>Actual</p>
-                              {actTSS > 0 ? (
+                              {actSecs > 0 ? (
                                 <>
-                                  <div className="flex items-baseline gap-0.5">
-                                    <span className="data-value text-sm font-bold" style={{ color: '#00A87E' }}>{actTSS}</span>
-                                    <span className="text-[10px] uppercase" style={{ color: 'rgba(0,168,126,0.6)' }}>TSS</span>
-                                  </div>
+                                  {actTSS > 0 && (
+                                    <div className="flex items-baseline gap-0.5">
+                                      <span className="data-value text-sm font-bold" style={{ color: '#00A87E' }}>{actTSS}</span>
+                                      <span className="text-[10px] uppercase" style={{ color: 'rgba(0,168,126,0.6)' }}>TSS</span>
+                                    </div>
+                                  )}
                                   <div className="flex items-baseline gap-0.5">
                                     <span className="data-value text-sm font-bold" style={{ color: '#00A87E' }}>{(actSecs / 3600).toFixed(1)}</span>
                                     <span className="text-[10px] uppercase" style={{ color: 'rgba(0,168,126,0.6)' }}>h</span>
