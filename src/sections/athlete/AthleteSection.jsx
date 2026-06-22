@@ -581,11 +581,24 @@ function buildSegs(wake, bed, blocks, windows) {
   return { segs, span }
 }
 
-function MiniTimeline({ wake, bed, blocks, windows }) {
+function MiniTimeline({ wake, bed, blocks, windows, dark = false }) {
   const wD = toDec(wake), bD = toDec(bed)
-  const { segs, span } = buildSegs(wake, bed, blocks, windows)
+  const { segs: rawSegs, span } = buildSegs(wake, bed, blocks, windows)
+
+  // On dark backgrounds swap the near-black committed/filler colors to white-tinted
+  const segs = dark ? rawSegs.map(s => ({
+    ...s,
+    color: s.kind === 'gap'    ? s.color                      // keep green
+         : s.kind === 'block'  ? 'rgba(255,255,255,0.22)'     // visible on dark
+         :                       'rgba(255,255,255,0.07)',     // filler
+  })) : rawSegs
+
   const labelSegs = segs.filter(s => s.kind === 'gap' && s.label && (s.end - s.start) / span >= 0.07)
   const [hoveredIdx, setHoveredIdx] = useState(null)
+
+  const labelColor     = dark ? 'rgba(0,200,150,0.90)' : '#004d35'
+  const subLabelColor  = dark ? 'rgba(0,200,150,0.60)' : '#006644'
+  const timeLabelColor = dark ? 'rgba(255,255,255,0.30)' : 'rgba(15,31,28,0.30)'
 
   return (
     <div className="flex-1 flex flex-col gap-1">
@@ -606,8 +619,8 @@ function MiniTimeline({ wake, bed, blocks, windows }) {
             return (
               <div key={i} className="absolute flex flex-col"
                 style={{ left: `${centerPct}%`, top: '50%', transform: 'translate(-50%, -50%)', alignItems: 'center' }}>
-                <span className="data-value font-semibold leading-none" style={{ fontSize: 9, whiteSpace: 'nowrap', color: '#004d35' }}>{s.label}</span>
-                <span className="leading-none mt-0.5" style={{ fontSize: 8, color: '#006644', opacity: 0.75 }}>free</span>
+                <span className="data-value font-semibold leading-none" style={{ fontSize: 9, whiteSpace: 'nowrap', color: labelColor }}>{s.label}</span>
+                <span className="leading-none mt-0.5" style={{ fontSize: 8, color: subLabelColor, opacity: 0.75 }}>free</span>
               </div>
             )
           })}
@@ -640,8 +653,8 @@ function MiniTimeline({ wake, bed, blocks, windows }) {
 
       </div>
       <div className="flex justify-between">
-        <span className="data-value text-[9px]" style={{ color: 'rgba(15,31,28,0.30)' }}>{toLabel(wD)}</span>
-        <span className="data-value text-[9px]" style={{ color: 'rgba(15,31,28,0.30)' }}>{toLabel(bD)}</span>
+        <span className="data-value text-[9px]" style={{ color: timeLabelColor }}>{toLabel(wD)}</span>
+        <span className="data-value text-[9px]" style={{ color: timeLabelColor }}>{toLabel(bD)}</span>
       </div>
     </div>
   )
@@ -923,7 +936,7 @@ function ModifierRow({ label, options, value, onChange }) {
 }
 
 function DailyReadiness({ seasonData, onSetupSeason }) {
-  const [planDate, setPlanDate] = useState('2026-06-02')
+  const [planDate, setPlanDate] = useState(new Date().toISOString().slice(0, 10))
   const planDateObj = new Date(planDate + 'T12:00:00')
   const dayName = planDateObj.toLocaleDateString('en-US', { weekday: 'long' })
   const dateStr = planDateObj.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
@@ -983,58 +996,43 @@ function DailyReadiness({ seasonData, onSetupSeason }) {
           </p>
           <div className="flex items-stretch">
 
-            {/* ── Left column — Internal (Whoop) ── */}
-            <div className="flex-1 flex flex-col gap-2 pr-5">
-              <div className="flex items-center gap-2">
-                <p className="data-value text-[9px] uppercase tracking-widest font-semibold"
-                  style={{ color: 'rgba(255,255,255,0.90)' }}>Internal Health</p>
+            {/* ── Left — Training Readiness ring ── */}
+            <div className="flex flex-col items-center justify-center pr-6 py-1">
+              <p className="text-[9px] uppercase tracking-widest font-semibold mb-3"
+                style={{ color: 'rgba(255,255,255,0.45)' }}>Today's Training Readiness</p>
+              <div className="relative" style={{ width: 148, height: 148 }}>
+                <svg width="148" height="148" style={{ transform: 'rotate(-90deg)' }}>
+                  {/* Track */}
+                  <circle cx="74" cy="74" r="60" fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="11" />
+                  {/* Whoop base arc */}
+                  <circle cx="74" cy="74" r="60" fill="none"
+                    stroke="rgba(0,200,150,0.25)" strokeWidth="11" strokeLinecap="round"
+                    strokeDasharray={`${2 * Math.PI * 60 * WHOOP_DATA.recovery / 100} ${2 * Math.PI * 60}`}
+                    style={{ transition: 'stroke-dashoffset 0.5s ease' }}
+                  />
+                  {/* Combined readiness arc */}
+                  <circle cx="74" cy="74" r="60" fill="none"
+                    stroke={c.stroke} strokeWidth="11" strokeLinecap="round"
+                    strokeDasharray={`${2 * Math.PI * 60 * (readiness ?? 0) / 100} ${2 * Math.PI * 60}`}
+                    style={{ transition: 'stroke-dashoffset 0.5s ease' }}
+                  />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="data-value font-bold" style={{ fontSize: 46, lineHeight: 1, color: c.text }}>
+                    {readiness !== null ? readiness : '—'}
+                  </span>
+                  {readiness !== null ? (
+                    <p className="text-[10px] font-semibold mt-1 text-center px-2 leading-tight" style={{ color: c.text }}>
+                      {readinessLabel(readiness)}
+                    </p>
+                  ) : (
+                    <p className="text-[9px] text-center px-4 mt-1 leading-snug" style={{ color: 'rgba(255,255,255,0.30)' }}>
+                      Log load<br />to unlock
+                    </p>
+                  )}
+                </div>
               </div>
-              <div className="flex items-start gap-4">
-                {[
-                  { label: 'HRV',   val: WHOOP_DATA.hrv.value,      unit: 'ms',  trend: WHOOP_DATA.hrv.trend,      inverted: false },
-                  { label: 'Sleep', val: WHOOP_DATA.sleep.value,     unit: 'h',   trend: WHOOP_DATA.sleep.trend,    inverted: false },
-                  { label: 'RHR',   val: WHOOP_DATA.restingHR.value, unit: 'bpm', trend: WHOOP_DATA.restingHR.trend,inverted: true  },
-                ].map(m => {
-                  const isPositive = m.inverted ? m.trend === 'down' : m.trend !== 'down'
-                  const col = m.trend === 'flat' ? 'rgba(255,255,255,0.45)' : isPositive ? '#00C896' : '#E85555'
-                  const arrow = m.trend === 'up' ? '↑' : m.trend === 'down' ? '↓' : '→'
-                  return (
-                    <div key={m.label}>
-                      <p className="data-value text-[9px] uppercase tracking-wider mb-1"
-                        style={{ color: 'rgba(255,255,255,0.30)' }}>{m.label}</p>
-                      <p className="data-value font-bold" style={{ fontSize: 16, lineHeight: 1, color: col }}>
-                        {m.val}<span className="font-normal ml-0.5" style={{ fontSize: 9, color: 'rgba(255,255,255,0.30)' }}>{m.unit}</span>
-                      </p>
-                      <p className="data-value text-[10px] mt-0.5" style={{ color: col }}>{arrow}</p>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* Divider */}
-            <div style={{ width: '1px', height: 52, backgroundColor: 'rgba(255,255,255,0.18)', flexShrink: 0, alignSelf: 'center' }} />
-
-            {/* ── Center — Training Readiness ── */}
-            <div className="flex flex-col items-center px-6">
-              <p className="font-semibold text-xs tracking-wide mb-2" style={{ color: 'rgba(255,255,255,0.90)' }}>
-                Training Readiness
-              </p>
-              <span className="data-value font-bold" style={{ fontSize: 56, lineHeight: 1, color: c.text }}>
-                {readiness !== null ? readiness : '—'}
-              </span>
-              <div className="mt-1.5 text-center">
-                {readiness !== null ? (
-                  <p className="font-semibold text-sm leading-tight" style={{ color: c.text }}>
-                    {readinessLabel(readiness)}
-                  </p>
-                ) : (
-                  <p className="text-[11px] leading-snug" style={{ color: 'rgba(255,255,255,0.35)' }}>
-                    Log today's load to see readiness
-                  </p>
-                )}
-              </div>
-              <div className="flex items-center gap-1.5 mt-2">
+              <div className="flex items-center gap-1.5 mt-3">
                 <span className="data-value text-[10px] font-semibold px-2 py-0.5 rounded-full"
                   style={{ backgroundColor: 'rgba(0,200,150,0.18)', color: '#00C896' }}>
                   {WHOOP_DATA.recovery} Whoop
@@ -1054,50 +1052,106 @@ function DailyReadiness({ seasonData, onSetupSeason }) {
               </div>
             </div>
 
-            {/* Divider */}
-            <div style={{ width: '1px', height: 52, backgroundColor: 'rgba(255,255,255,0.18)', flexShrink: 0, alignSelf: 'center' }} />
+            {/* Vertical divider */}
+            <div style={{ width: '1px', backgroundColor: 'rgba(255,255,255,0.12)', flexShrink: 0, alignSelf: 'stretch' }} />
 
-            {/* ── Right column — External load ── */}
-            <div className="flex-1 flex flex-col items-end gap-2 pl-5">
-              <div className="flex items-center gap-2">
-                <p className="data-value text-[9px] uppercase tracking-widest font-semibold"
-                  style={{ color: 'rgba(255,255,255,0.90)' }}>External Load</p>
-                <span className="w-1 h-1 rounded-full"
-                  style={{ backgroundColor: hasCheckedIn ? '#00C896' : 'rgba(255,255,255,0.20)' }} />
-                <span className="data-value text-[9px]"
-                  style={{ color: hasCheckedIn ? '#00C896' : 'rgba(255,255,255,0.25)' }}>
-                  {hasCheckedIn ? 'Day logged' : 'Log below ↓'}
-                </span>
-              </div>
-              <div className="flex items-start gap-4">
-                <div className="text-right">
-                  <p className="data-value text-[9px] uppercase tracking-wider mb-1"
-                    style={{ color: 'rgba(255,255,255,0.30)' }}>Commitments</p>
-                  <p className="data-value font-bold" style={{ fontSize: 16, lineHeight: 1, color: blocks.length > 3 ? '#F5A623' : 'rgba(255,255,255,0.75)' }}>
-                    {blocks.length}<span className="font-normal ml-0.5" style={{ fontSize: 9, color: 'rgba(255,255,255,0.30)' }}>{blocks.length === 1 ? 'blk' : 'blks'}</span>
-                  </p>
+            {/* ── Right column: Internal Health + External Load side by side, My Day below ── */}
+            <div className="flex-1 flex flex-col pl-6">
+
+              {/* Top row: Internal Health | divider | External Load */}
+              <div className="flex items-start gap-0 flex-1">
+
+                {/* Internal Health */}
+                <div className="flex flex-col gap-2 flex-1">
+                  <p className="data-value text-[9px] uppercase tracking-widest font-semibold"
+                    style={{ color: 'rgba(255,255,255,0.45)' }}>Internal Health</p>
+                  <div className="flex items-start gap-5">
+                    {[
+                      { label: 'HRV',   val: WHOOP_DATA.hrv.value,      unit: 'ms',  trend: WHOOP_DATA.hrv.trend,      inverted: false },
+                      { label: 'Sleep', val: WHOOP_DATA.sleep.value,     unit: 'h',   trend: WHOOP_DATA.sleep.trend,    inverted: false },
+                      { label: 'RHR',   val: WHOOP_DATA.restingHR.value, unit: 'bpm', trend: WHOOP_DATA.restingHR.trend, inverted: true  },
+                    ].map(m => {
+                      const isPositive = m.inverted ? m.trend === 'down' : m.trend !== 'down'
+                      const col = m.trend === 'flat' ? 'rgba(255,255,255,0.45)' : isPositive ? '#00C896' : '#E85555'
+                      const arrow = m.trend === 'up' ? '↑' : m.trend === 'down' ? '↓' : '→'
+                      return (
+                        <div key={m.label}>
+                          <p className="data-value text-[9px] uppercase tracking-wider mb-1"
+                            style={{ color: 'rgba(255,255,255,0.30)' }}>{m.label}</p>
+                          <p className="data-value font-bold" style={{ fontSize: 18, lineHeight: 1, color: col }}>
+                            {m.val}<span className="font-normal ml-0.5" style={{ fontSize: 9, color: 'rgba(255,255,255,0.30)' }}>{m.unit}</span>
+                          </p>
+                          <p className="data-value text-[10px] mt-0.5" style={{ color: col }}>{arrow}</p>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="data-value text-[9px] uppercase tracking-wider mb-1"
-                    style={{ color: 'rgba(255,255,255,0.30)' }}>Free Time</p>
-                  <p className="data-value font-bold"
-                    style={{ fontSize: 16, lineHeight: 1, color: totalFreeHours >= 4 ? '#00C896' : totalFreeHours >= 2 ? '#F5A623' : '#E85555' }}>
-                    {totalFreeHours.toFixed(1)}<span className="font-normal ml-0.5" style={{ fontSize: 9, color: 'rgba(255,255,255,0.30)' }}>h</span>
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="data-value text-[9px] uppercase tracking-wider mb-1"
-                    style={{ color: 'rgba(255,255,255,0.30)' }}>Modifiers</p>
-                  {modPenalty > 0 ? (
-                    <div className="flex flex-col items-end gap-0.5">
-                      {stress !== 'none' && <span className="data-value text-[10px] font-semibold capitalize" style={{ color: '#F5A623' }}>{stress} stress</span>}
-                      {injury !== 'none' && <span className="data-value text-[10px] font-semibold capitalize" style={{ color: '#F5A623' }}>{injury} injury</span>}
+
+                {/* Inner vertical divider */}
+                <div style={{ width: '1px', alignSelf: 'stretch', backgroundColor: 'rgba(255,255,255,0.10)', flexShrink: 0, marginLeft: 20, marginRight: 20 }} />
+
+                {/* External Load */}
+                <div className="flex flex-col gap-2 flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="data-value text-[9px] uppercase tracking-widest font-semibold"
+                      style={{ color: 'rgba(255,255,255,0.45)' }}>External Load</p>
+                    <span className="w-1.5 h-1.5 rounded-full"
+                      style={{ backgroundColor: hasCheckedIn ? '#00C896' : 'rgba(255,255,255,0.18)' }} />
+                    <span className="data-value text-[9px]"
+                      style={{ color: hasCheckedIn ? '#00C896' : 'rgba(255,255,255,0.25)' }}>
+                      {hasCheckedIn ? 'Day logged' : 'Log below ↓'}
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-5">
+                    <div>
+                      <p className="data-value text-[9px] uppercase tracking-wider mb-1"
+                        style={{ color: 'rgba(255,255,255,0.30)' }}>Commitments</p>
+                      <p className="data-value font-bold" style={{ fontSize: 18, lineHeight: 1, color: blocks.length > 3 ? '#F5A623' : 'rgba(255,255,255,0.75)' }}>
+                        {blocks.length}<span className="font-normal ml-0.5" style={{ fontSize: 9, color: 'rgba(255,255,255,0.30)' }}>{blocks.length === 1 ? 'blk' : 'blks'}</span>
+                      </p>
                     </div>
-                  ) : (
-                    <p className="data-value text-[10px]" style={{ color: 'rgba(255,255,255,0.25)' }}>None</p>
-                  )}
+                    <div>
+                      <p className="data-value text-[9px] uppercase tracking-wider mb-1"
+                        style={{ color: 'rgba(255,255,255,0.30)' }}>Free Time</p>
+                      <p className="data-value font-bold"
+                        style={{ fontSize: 18, lineHeight: 1, color: totalFreeHours >= 4 ? '#00C896' : totalFreeHours >= 2 ? '#F5A623' : '#E85555' }}>
+                        {totalFreeHours.toFixed(1)}<span className="font-normal ml-0.5" style={{ fontSize: 9, color: 'rgba(255,255,255,0.30)' }}>h</span>
+                      </p>
+                    </div>
+                    <div>
+                      <p className="data-value text-[9px] uppercase tracking-wider mb-1"
+                        style={{ color: 'rgba(255,255,255,0.30)' }}>Modifiers</p>
+                      {modPenalty > 0 ? (
+                        <div className="flex flex-col gap-0.5">
+                          {stress !== 'none' && <span className="data-value text-[10px] font-semibold capitalize" style={{ color: '#F5A623' }}>{stress} stress</span>}
+                          {injury !== 'none' && <span className="data-value text-[10px] font-semibold capitalize" style={{ color: '#F5A623' }}>{injury} injury</span>}
+                        </div>
+                      ) : (
+                        <p className="data-value text-[10px]" style={{ color: 'rgba(255,255,255,0.25)' }}>None</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Horizontal divider */}
+              <div style={{ height: '1px', backgroundColor: 'rgba(255,255,255,0.10)', flexShrink: 0, marginTop: 16, marginBottom: 16 }} />
+
+              {/* My Day — timeline anchored at bottom */}
+              <div className="flex items-center gap-4">
+                <p className="data-value text-[9px] uppercase tracking-widest font-semibold shrink-0"
+                  style={{ color: 'rgba(255,255,255,0.45)' }}>My Day</p>
+                <MiniTimeline wake={wake} bed={bed} blocks={blocks} windows={windows} dark={true} />
+                <div className="flex items-baseline gap-0.5 shrink-0">
+                  <span className="data-value text-2xl font-bold leading-none" style={{ color: extScoreColor.text }}>
+                    {externalScore}
+                  </span>
+                  <span className="text-[10px] ml-1" style={{ color: 'rgba(255,255,255,0.30)' }}>/ 100</span>
                 </div>
               </div>
+
             </div>
 
           </div>
@@ -1107,18 +1161,6 @@ function DailyReadiness({ seasonData, onSetupSeason }) {
       {/* ── My Day body ── */}
       <div style={{ borderBottom: 'var(--border)' }}>
         <div className="px-6 py-5">
-
-          {/* Header with inline mini timeline */}
-          <div className="flex items-center gap-4 mb-6">
-            <p className="section-title shrink-0">My Day</p>
-            <MiniTimeline wake={wake} bed={bed} blocks={blocks} windows={windows} />
-            <div className="flex items-baseline gap-0.5 shrink-0">
-              <span className="data-value text-2xl font-bold leading-none" style={{ color: extScoreColor.text }}>
-                {externalScore}
-              </span>
-              <span className="text-[10px] ml-1" style={{ color: 'var(--color-text-muted)' }}>/ 100</span>
-            </div>
-          </div>
 
           {/* ── Step 1: Bedtime ── */}
           <div className="mb-5">
