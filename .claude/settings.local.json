@@ -29,7 +29,12 @@
       "Bash(npx vite *)",
       "Bash(python3 -)",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(git -C /Users/nickolsen/cadenceiq status)",
+      "Bash(git -C /Users/nickolsen/cadenceiq diff --stat)",
+      "Bash(git -C /Users/nickolsen/cadenceiq add src/sections/athlete/AthleteSection.jsx)",
+      "Bash(git -C /Users/nickolsen/cadenceiq commit -m ' *)",
+      "Bash(git -C /Users/nickolsen/cadenceiq add .claude/settings.local.json)"
     ]
   }
 }
