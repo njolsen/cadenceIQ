@@ -131,6 +131,7 @@ export default function AthleteSection() {
               onClearHighlight={() => setHighlightDay(null)}
               activityByDate={activityByDate}
               athleteFtp={profile.ftp}
+              readinessScore={WHOOP_DATA.recovery}
               onAddCalendarEvent={handleAddCalendarEvent}
               onRemoveCalendarEvent={handleRemoveCalendarEvent}
             />
@@ -211,8 +212,16 @@ export function SeasonArc({ seasonData, onEditDates, onSetupSeason, onRaceClick 
 
   const upcoming = (seasonData.races ?? [])
     .map(r => ({ ...r, days: daysUntil(r.date) }))
-    .filter(r => r.days > 0)
+    .filter(r => r.days >= 0)
     .sort((a, b) => a.days - b.days)
+
+  function countdownLabel(days) {
+    if (days === 0) return 'Today'
+    if (days === 1) return 'Tomorrow'
+    return `${days}d`
+  }
+
+  const next = upcoming[0] ?? null
 
   return (
     <div className="flex items-center gap-3">
@@ -253,16 +262,22 @@ export function SeasonArc({ seasonData, onEditDates, onSetupSeason, onRaceClick 
         />
       </div>
       <div className="flex items-center gap-3 shrink-0">
-        {upcoming.slice(0, 3).map((r, i) => (
-          <button
-            key={r.id ?? r.name}
-            onClick={() => onRaceClick?.(r)}
-            className="data-value text-xs font-medium transition-opacity hover:opacity-70"
-            style={{ color: i === 0 ? '#FF2D78' : 'var(--color-text-muted)' }}
-          >
-            {r.name} · {r.days}d
-          </button>
-        ))}
+        {next && (
+          <div className="flex items-center gap-1.5">
+            <span
+              className="data-value text-xs font-semibold"
+              style={{ color: '#FF2D78' }}
+            >
+              {next.name}
+            </span>
+            <span
+              className="data-value text-[11px] px-1.5 py-0.5 rounded-full font-medium"
+              style={{ backgroundColor: 'rgba(255,45,120,0.10)', color: '#FF2D78' }}
+            >
+              {countdownLabel(next.days)}
+            </span>
+          </div>
+        )}
         <button
           onClick={onEditDates ?? onSetupSeason}
           className="text-[11px] px-2 py-0.5 rounded-full transition-colors"

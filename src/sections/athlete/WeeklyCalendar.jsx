@@ -102,15 +102,145 @@ const DAY_NAMES   = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 const WO_TYPES = ['Endurance','Threshold','Intervals','VO2max','Tempo','Recovery','Race Sim','Custom']
 const WO_ZONES = ['Z1','Z2','Z3','Z3–4','Z4','Z4–5','Z5']
 
-// ─── Prior day external load (hardcoded POC — wire to Overview state later) ──
+// ─── Today's workout recommendation ──────────────────────────────────────────
 
-const PRIOR_DAY_LOAD = {
-  date: '2026-06-01',
-  workHours: 9,
-  commitHours: 1.5,
-  totalHours: 10.5,
-  impact: 'moderate', // 'none' | 'light' | 'moderate' | 'high'
-  note: 'Yesterday: 9h work + 1.5h family time — 10.5h committed. Today\'s session has been kept to moderate intensity.',
+function TodayRecommendation({ readinessScore, activityByDate, userWorkouts, athleteFtp, seasonData }) {
+  const d = new Date(TODAY + 'T12:00:00')
+  d.setDate(d.getDate() - 1)
+  const yesterdayStr = isoDate(d)
+
+  const stravaYest = activityByDate[yesterdayStr] ?? []
+  const userYest   = userWorkouts[yesterdayStr] ?? []
+
+  const stravaTSS  = stravaYest.reduce((s, a) => s + (a.est_tss || 0), 0)
+  const stravaSecs = stravaYest.reduce((s, a) => s + (a.moving_time_s || 0), 0)
+  const userBikeMins = userYest.filter(w => w.type === 'bike').reduce((s, w) => s + (w.totalMin || 0), 0)
+
+  const yesterdayTSS   = Math.round(stravaTSS)
+  const hadWorkout     = stravaSecs > 0 || userBikeMins > 0 || userYest.some(w => w.type !== 'event')
+  const isHighIntensity = yesterdayTSS > 100 ||
+    stravaYest.some(a => a.est_tss && a.moving_time_s && (a.est_tss / (a.moving_time_s / 3600)) > 70)
+
+  let yesterdayLabel = 'Rest day'
+  if (hadWorkout) {
+    const mins = Math.round(stravaSecs / 60) || userBikeMins
+    const h = Math.floor(mins / 60), m = mins % 60
+    const durStr = h ? (m ? `${h}h ${m}m` : `${h}h`) : (m ? `${m}m` : '')
+    const name = stravaYest[0]?.name || userYest.find(w => w.type !== 'event')?.name || 'Workout'
+    yesterdayLabel = [name, durStr && `· ${durStr}`, yesterdayTSS && `· ${yesterdayTSS} TSS`].filter(Boolean).join(' ')
+  }
+
+  const today = new Date(TODAY + 'T12:00:00')
+  const nextRace = (seasonData?.races ?? [])
+    .map(r => ({ ...r, days: Math.ceil((new Date(r.date + 'T12:00:00') - today) / 86400000) }))
+    .filter(r => r.days >= 0)
+    .sort((a, b) => a.days - b.days)[0] ?? null
+
+  const ftp = athleteFtp || 295
+  const W = (lo, hi) => ({ lo: Math.round(ftp * lo), hi: Math.round(ftp * hi) })
+  const daysToRace = nextRace?.days ?? null
+
+  let rec
+  if (daysToRace === 0) {
+    rec = { type: 'Race day', duration: null, zone: null, watts: null,
+      rationale: `Today is ${nextRace.name}. Rest until your start — do a short warm-up only, keep legs fresh.`,
+      color: '#FF2D78' }
+  } else if (daysToRace !== null && daysToRace <= 2) {
+    rec = { type: 'Race openers', duration: '45 min', zone: 'Z2 + Z4–5', watts: W(0.55, 1.20),
+      rationale: `Race in ${daysToRace} day${daysToRace === 1 ? '' : 's'} — ${nextRace.name}. Short activation with a few 30-sec efforts to keep legs snappy without adding fatigue.`,
+      color: '#FF2D78' }
+  } else if (daysToRace !== null && daysToRace <= 6) {
+    rec = { type: 'Easy endurance', duration: '1h', zone: 'Z2', watts: W(0.55, 0.75),
+      rationale: `Race in ${daysToRace} days. Accumulate easy aerobic work — no intensity this close to ${nextRace.name}.`,
+      color: '#00C896' }
+  } else if (readinessScore < 50) {
+    rec = { type: 'Rest day', duration: null, zone: null, watts: null,
+      rationale: 'Recovery score is below 50. A rest day compounds fitness faster than any session — let your body adapt from recent training.',
+      color: '#E85555' }
+  } else if (isHighIntensity) {
+    rec = readinessScore >= 75
+      ? { type: 'Endurance ride', duration: '1h 30m', zone: 'Z2', watts: W(0.55, 0.75),
+          rationale: 'High-intensity effort yesterday. Even with good readiness, stay aerobic today — adaptation from yesterday\'s work happens during recovery, not more intensity.',
+          color: '#00C896' }
+      : { type: 'Recovery spin', duration: '30–45 min', zone: 'Z1', watts: W(0.45, 0.55),
+          rationale: 'Hard effort yesterday with moderate readiness. A short, easy spin flushes lactate without adding training stress.',
+          color: '#00C896' }
+  } else if (!hadWorkout) {
+    rec = readinessScore >= 80
+      ? { type: 'Threshold intervals', duration: '1h 15m', zone: 'Z4', watts: W(0.90, 1.05),
+          rationale: 'Rest day yesterday + high readiness — optimal conditions for structured intensity. This is your best adaptation window this week.',
+          color: '#E85555' }
+      : readinessScore >= 65
+        ? { type: 'Sweet spot', duration: '1h 30m', zone: 'Z3–4', watts: W(0.84, 0.97),
+            rationale: 'Fresh legs after rest with solid readiness. Sustained effort in sweet spot maximises aerobic adaptation per hour.',
+            color: '#F5A623' }
+        : { type: 'Endurance ride', duration: '1h 30m', zone: 'Z2', watts: W(0.55, 0.75),
+            rationale: 'Rest day yesterday but readiness is moderate. Build aerobic base steadily — save intensity for when you\'re more recovered.',
+            color: '#00C896' }
+  } else if (yesterdayTSS > 60) {
+    rec = readinessScore >= 75
+      ? { type: 'Endurance ride', duration: '1h 30m', zone: 'Z2', watts: W(0.55, 0.75),
+          rationale: 'Solid effort yesterday. High readiness supports aerobic work — no intensity today, let the adaptation from yesterday settle.',
+          color: '#00C896' }
+      : { type: 'Easy ride', duration: '1h', zone: 'Z1–Z2', watts: W(0.45, 0.70),
+          rationale: 'Solid effort yesterday with moderate readiness. Keep the legs moving without adding stress.',
+          color: '#00C896' }
+  } else {
+    rec = readinessScore >= 75
+      ? { type: 'Tempo / Sweet spot', duration: '1h 30m', zone: 'Z3–4', watts: W(0.84, 0.97),
+          rationale: 'Light load yesterday + good readiness. Sweet spot work sits in your optimal adaptation window today.',
+          color: '#F5A623' }
+      : { type: 'Endurance ride', duration: '1h 15m', zone: 'Z2', watts: W(0.55, 0.75),
+          rationale: 'Light load from yesterday. Steady aerobic work — keep intensity in check and give the body room to recover.',
+          color: '#00C896' }
+  }
+
+  const rColor = readinessScore >= 75 ? '#00C896' : readinessScore >= 50 ? '#F5A623' : '#E85555'
+  const rBg    = readinessScore >= 75 ? 'rgba(0,200,150,0.10)' : readinessScore >= 50 ? 'rgba(245,166,35,0.10)' : 'rgba(232,85,85,0.10)'
+
+  return (
+    <div className="px-6 py-4" style={{ borderBottom: 'var(--border)' }}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2.5">
+          <span className="section-title">Today's Recommendation</span>
+          <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+            Yesterday: {yesterdayLabel}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>Readiness</span>
+          <span className="data-value text-xs font-bold px-2 py-0.5 rounded-full"
+            style={{ backgroundColor: rBg, color: rColor }}>
+            {readinessScore}
+          </span>
+        </div>
+      </div>
+      <div className="flex items-start gap-3 rounded-xl px-4 py-3"
+        style={{ backgroundColor: `${rec.color}12`, border: `0.5px solid ${rec.color}40` }}>
+        <span className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: rec.color }} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <span className="text-sm font-semibold">{rec.type}</span>
+            {rec.duration && (
+              <span className="data-value text-xs" style={{ color: 'var(--color-text-muted)' }}>{rec.duration}</span>
+            )}
+            {rec.zone && (
+              <span className="data-value text-[11px] font-medium px-1.5 py-0.5 rounded-md"
+                style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}>
+                {rec.zone}
+              </span>
+            )}
+            {rec.watts && (
+              <span className="data-value text-xs font-semibold" style={{ color: rec.color }}>
+                {rec.watts.lo}–{rec.watts.hi}W
+              </span>
+            )}
+          </div>
+          <p className="text-xs leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>{rec.rationale}</p>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ─── Commitment blocks (mirrors Overview defaults) ────────────────────────────
@@ -140,6 +270,7 @@ export default function WeeklyCalendar({
   onClearHighlight,
   activityByDate = {},
   athleteFtp = 295,
+  readinessScore = 78,
   onAddCalendarEvent,
   onRemoveCalendarEvent,
 }) {
@@ -242,16 +373,14 @@ export default function WeeklyCalendar({
         </div>
       </div>
 
-      {/* ── Prior day load banner ── */}
-      {PRIOR_DAY_LOAD.impact !== 'none' && (
-        <div
-          className="px-6 py-2.5 flex items-center gap-2"
-          style={{ backgroundColor: 'rgba(245,166,35,0.06)', borderBottom: '0.5px solid rgba(245,166,35,0.2)' }}
-        >
-          <span className="text-xs">⚡</span>
-          <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{PRIOR_DAY_LOAD.note}</p>
-        </div>
-      )}
+      {/* ── Today's workout recommendation ── */}
+      <TodayRecommendation
+        readinessScore={readinessScore}
+        activityByDate={activityByDate}
+        userWorkouts={userWorkouts}
+        athleteFtp={athleteFtp}
+        seasonData={seasonData}
+      />
 
       {/* ── Month view ── */}
       <div className="p-4">
@@ -280,7 +409,7 @@ export default function WeeklyCalendar({
           date={dayModal.date}
           mode={dayModal.mode}
           onSetMode={mode => setDayModal({ ...dayModal, mode })}
-          onSave={w => { handleSaveWorkout(dayModal.date, w); w.type === 'bike' ? setDayModal(null) : setDayModal({ date: dayModal.date, mode: 'pick', addMode: true }) }}
+          onSave={w => { handleSaveWorkout(dayModal.date, w); setDayModal(null) }}
           onClose={() => setDayModal(null)}
           athleteFtp={athleteFtp}
           dayWorkouts={userWorkouts[dayModal.date] ?? []}
