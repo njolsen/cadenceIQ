@@ -2,11 +2,12 @@ import { useState, useEffect, useRef } from 'react'
 import WeeklyCalendar from './WeeklyCalendar'
 import SeasonSetupModal from './SeasonSetupModal'
 import TrainingAdaptation from './TrainingAdaptation'
+import AnalyticsSection from '../analytics/AnalyticsSection'
 import { fetchActivities } from '../../services/activitiesApi'
 import { useProfile } from '../../context/ProfileContext'
 import Avatar from '../../components/Avatar'
 
-const TABS = ['Overview', 'Training & Racing Calendar']
+const TABS = ['Overview', 'Training & Racing Calendar', 'Analytics']
 
 // Shared week data (used by Overview glance + Calendar)
 export const SESSIONS = [
@@ -109,6 +110,16 @@ export default function AthleteSection() {
       ))}
     </div>
   )
+
+  if (activeTab === 'Analytics') {
+    return (
+      <div className="max-w-6xl w-full mx-auto px-6 pt-6">
+        {pageHeader}
+        {subTabs}
+        <AnalyticsSection embedded />
+      </div>
+    )
+  }
 
   if (activeTab === 'Training & Racing Calendar') {
     return (

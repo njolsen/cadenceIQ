@@ -3,14 +3,16 @@ import { useState } from 'react'
 // ─── Data ────────────────────────────────────────────────────────────────────
 
 const INITIAL_BIKES = [
-  { id: 'speedmax', name: 'Canyon Speedmax', type: 'TT',      color: '#1B6FD8', miles: 2100 },
-  { id: 'emonda',   name: 'Trek Emonda',     type: 'Road',    color: '#E85555', miles: 890  },
-  { id: 'zwift',    name: 'Zwift / Trainer', type: 'Trainer', color: '#00C896', miles: 6200 },
+  { id: 'speedmax', name: 'Canyon Speedmax', type: 'TT',      color: '#1B6FD8', miles: 2100, purchasedOn: '2022-03-10' },
+  { id: 'emonda',   name: 'Trek Emonda',     type: 'Road',    color: '#E85555', miles: 890,  purchasedOn: '2021-08-15' },
+  { id: 'zwift',    name: 'Zwift / Trainer', type: 'Trainer', color: '#00C896', miles: 6200, purchasedOn: '2020-11-01' },
+  { id: 'shoes',    name: 'Cycling Shoes',   type: 'Shoes',   color: '#7C5CBF', miles: 3200, purchasedOn: '2023-02-20' },
+  { id: 'helmet',   name: 'Road Helmet',     type: 'Helmet',  color: '#F5A623', miles: 0,    purchasedOn: '2022-06-01' },
 ]
 
-const OUTDOOR_TYPES = ['Road', 'TT', 'Gravel Bike', 'Mountain Bike']
-const INDOOR_TYPES  = ['Trainer', 'Stationary Bike']
-const TYPE_COLORS   = { Road: '#E85555', TT: '#1B6FD8', 'Gravel Bike': '#C07A3A', 'Mountain Bike': '#7C5CBF', Trainer: '#00C896', 'Stationary Bike': '#F5A623' }
+const BIKE_TYPES      = ['Road', 'TT', 'Gravel Bike', 'Mountain Bike']
+const EQUIPMENT_TYPES = ['Trainer', 'Stationary Bike', 'Shoes', 'Helmet']
+const TYPE_COLORS   = { Road: '#E85555', TT: '#1B6FD8', 'Gravel Bike': '#C07A3A', 'Mountain Bike': '#7C5CBF', Trainer: '#00C896', 'Stationary Bike': '#F5A623', Shoes: '#7C5CBF', Helmet: '#F5A623' }
 const TYPE_PLACEHOLDERS = {
   Road: 'e.g. Trek Emonda SL 6',
   TT: 'e.g. Canyon Speedmax CF SLX',
@@ -18,6 +20,8 @@ const TYPE_PLACEHOLDERS = {
   'Mountain Bike': 'e.g. Santa Cruz Tallboy',
   Trainer: 'e.g. Wahoo KICKR Core',
   'Stationary Bike': 'e.g. Peloton Bike+',
+  Shoes: 'e.g. Shimano RC902 S-Phyre',
+  Helmet: 'e.g. Giro Aether MIPS',
 }
 const TYPE_DESCS = {
   Road: 'Pavement, endurance, or criterium',
@@ -26,6 +30,8 @@ const TYPE_DESCS = {
   'Mountain Bike': 'Trail, XC, or enduro off-road',
   Trainer: 'Smart or wheel-on trainer',
   'Stationary Bike': 'Peloton, spin bike, or stationary',
+  Shoes: 'Road or TT cycling shoes',
+  Helmet: 'Road, TT, or aero helmet',
 }
 
 // status: 'good' | 'soon' | 'now' | 'overdue'
@@ -132,6 +138,22 @@ const INITIAL_COMPONENTS = {
       note: 'Dedicated trainer chain approaching replacement. Indoor riding is consistent load so chains wear predictably here — plan replacement within 200 mi.',
     },
   ],
+  shoes: [
+    {
+      name: 'Cleats',
+      miles: 3200, limit: 2000,
+      status: 'overdue',
+      note: 'Cleats are past replacement interval. Worn cleats can cause unintended release or knee tracking issues. Replace before next ride.',
+    },
+  ],
+  helmet: [
+    {
+      name: 'Road Helmet',
+      miles: 0, limit: 0,
+      status: 'good',
+      note: 'Replace every 3–5 years or immediately after any significant impact, even if no visible damage. Foam absorbs impact permanently — it does not recover.',
+    },
+  ],
 }
 
 function getDefaultComponents(type) {
@@ -174,6 +196,14 @@ function getDefaultComponents(type) {
     { name: 'Drive Belt',         miles: 0, limit: 10000, status: 'good', note: 'Replace if you hear squeaking or feel inconsistent resistance.' },
     { name: 'Brake / Resistance', miles: 0, limit: 5000,  status: 'good', note: 'Friction felt or magnetic resistance system. Service if resistance feels uneven.' },
     { name: 'Pedals',             miles: 0, limit: 8000,  status: 'good', note: 'Check pedal bearings annually. Replace if you feel play or grinding.' },
+  ]
+
+  if (type === 'Shoes') return [
+    { name: 'Cleats', miles: 0, limit: 2000, status: 'good', note: 'Replace every 2,000 mi or when contact points show visible wear. Worn cleats affect release and knee tracking.' },
+  ]
+
+  if (type === 'Helmet') return [
+    { name: 'Road Helmet', miles: 0, limit: 0, status: 'good', note: 'Replace every 3–5 years or immediately after any significant impact.' },
   ]
 
   // Road (default)
@@ -244,7 +274,7 @@ const STATUS = {
 // ─── Add bike modal ───────────────────────────────────────────────────────────
 
 function AddBikeModal({ group, onAdd, onClose }) {
-  const types = group === 'Outdoor' ? OUTDOOR_TYPES : INDOOR_TYPES
+  const types = group === 'My Bikes' ? BIKE_TYPES : EQUIPMENT_TYPES
   const [type,  setType]  = useState(types[0])
   const [name,  setName]  = useState('')
   const [miles, setMiles] = useState('')
@@ -265,7 +295,7 @@ function AddBikeModal({ group, onAdd, onClose }) {
         <div className="flex items-start justify-between mb-5">
           <div>
             <p className="section-title mb-0.5">Add to {group}</p>
-            <p className="font-semibold text-base">New bike</p>
+            <p className="font-semibold text-base">{group === 'My Bikes' ? 'New bike' : 'New item'}</p>
           </div>
           <button onClick={onClose} className="w-7 h-7 rounded-full flex items-center justify-center text-sm shrink-0 mt-0.5"
             style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: '#637068' }}>✕</button>
@@ -337,6 +367,7 @@ function AddBikeModal({ group, onAdd, onClose }) {
 // ─── Component accordion ──────────────────────────────────────────────────────
 
 function deriveStatus(miles, limit) {
+  if (!limit) return 'good'
   const pct = miles / limit
   if (pct >= 1)    return 'overdue'
   if (pct >= 0.9)  return 'now'
@@ -344,14 +375,29 @@ function deriveStatus(miles, limit) {
   return 'good'
 }
 
+function computeOwned(dateStr) {
+  if (!dateStr) return null
+  const purchased = new Date(dateStr)
+  const now = new Date()
+  if (isNaN(purchased) || purchased > now) return null
+  const totalDays = Math.floor((now - purchased) / 86400000)
+  if (totalDays < 30) return `${totalDays} day${totalDays !== 1 ? 's' : ''}`
+  const months = Math.floor(totalDays / 30.44)
+  if (months < 12) return `${months} month${months !== 1 ? 's' : ''}`
+  const years = Math.floor(months / 12)
+  const remMonths = months % 12
+  return remMonths > 0 ? `${years}y ${remMonths}mo` : `${years} year${years !== 1 ? 's' : ''}`
+}
+
 function ComponentAccordion({ bikes, setBikes, components, setComponents }) {
-  const [openBike,    setOpenBike]    = useState(null)
-  const [openComp,    setOpenComp]    = useState(null)
-  const [edits,       setEdits]       = useState({})
-  const [addingTo,    setAddingTo]    = useState(null)
-  const [confirmDel,  setConfirmDel]  = useState(null)
-  const [fitEdits,    setFitEdits]    = useState({})
-  const [fitEditOpen, setFitEditOpen] = useState(null)
+  const [openBike,      setOpenBike]      = useState(null)
+  const [openComp,      setOpenComp]      = useState(null)
+  const [edits,         setEdits]         = useState({})
+  const [addingTo,      setAddingTo]      = useState(null)
+  const [confirmDel,    setConfirmDel]    = useState(null)
+  const [fitEdits,      setFitEdits]      = useState({})
+  const [fitEditOpen,   setFitEditOpen]   = useState(null)
+  const [purchasedEdits, setPurchasedEdits] = useState({})
 
   function getComps(bikeId) {
     return (components[bikeId] ?? []).map(c => {
@@ -381,8 +427,8 @@ function ComponentAccordion({ bikes, setBikes, components, setComponents }) {
   }
 
   const groups = [
-    { label: 'Outdoor', bikes: bikes.filter(b => OUTDOOR_TYPES.includes(b.type)) },
-    { label: 'Indoor',  bikes: bikes.filter(b => INDOOR_TYPES.includes(b.type))  },
+    { label: 'My Bikes',     bikes: bikes.filter(b => BIKE_TYPES.includes(b.type))      },
+    { label: 'My Equipment', bikes: bikes.filter(b => EQUIPMENT_TYPES.includes(b.type)) },
   ]
 
   function handleAddBike(newBike) {
@@ -448,7 +494,7 @@ function ComponentAccordion({ bikes, setBikes, components, setComponents }) {
         const hasSoon    = comps.some(c => c.status === 'soon')
         const issueCount = comps.filter(c => c.status !== 'good').length
         const healthColor = hasUrgent ? '#E85555' : hasSoon ? '#F5A623' : '#00C896'
-        const fit        = OUTDOOR_TYPES.includes(bike.type) ? getMergedFit(bike.id) : null
+        const fit        = BIKE_TYPES.includes(bike.type) ? getMergedFit(bike.id) : null
         const refit      = isRefitNeeded(fit)
 
         return (
@@ -509,6 +555,34 @@ function ComponentAccordion({ bikes, setBikes, components, setComponents }) {
               </svg>
             </div>
 
+            {/* ── Date Purchased ── */}
+            {isOpen && (() => {
+              const purchased = purchasedEdits[bike.id] ?? bike.purchasedOn ?? ''
+              const owned = computeOwned(purchased)
+              const today = new Date().toISOString().slice(0, 10)
+              return (
+                <div className="px-5 py-3 flex items-center justify-between"
+                  style={{ borderTop: '0.5px solid rgba(15,31,28,0.08)', backgroundColor: '#FFFFFF' }}>
+                  <p className="section-title">Date Purchased</p>
+                  <div className="flex items-center gap-3">
+                    {owned && (
+                      <span className="data-value text-xs font-semibold" style={{ color: 'var(--color-accent-dim)' }}>
+                        {owned}
+                      </span>
+                    )}
+                    <input
+                      type="date"
+                      value={purchased}
+                      max={today}
+                      onChange={e => setPurchasedEdits(prev => ({ ...prev, [bike.id]: e.target.value }))}
+                      className="data-value text-xs rounded-lg px-2 py-1 outline-none"
+                      style={{ border: 'var(--border)', color: '#1A2421', backgroundColor: 'rgba(15,31,28,0.03)', cursor: 'pointer' }}
+                    />
+                  </div>
+                </div>
+              )
+            })()}
+
             {/* ── Component Wear label ── */}
             {isOpen && (
               <div className="px-5 pt-3.5 pb-2"
@@ -521,11 +595,13 @@ function ComponentAccordion({ bikes, setBikes, components, setComponents }) {
             {isOpen && comps.map(c => {
               const key       = `${bike.id}:${c.name}`
               const s         = STATUS[c.status]
-              const pct       = Math.min(Math.round((c.miles / c.limit) * 100), 100)
+              const pct       = c.limit ? Math.min(Math.round((c.miles / c.limit) * 100), 100) : 0
               const editOpen  = openComp === key
               const e         = edits[key] ?? {}
-              const ePct      = Math.min(Math.round((Number(e.miles || c.miles) / Number(e.limit || c.limit)) * 100), 100)
-              const eStatus   = STATUS[deriveStatus(Number(e.miles || c.miles), Number(e.limit || c.limit))]
+              const eMiles    = Number(e.miles ?? c.miles)
+              const eLimit    = Number(e.limit ?? c.limit)
+              const ePct      = eLimit ? Math.min(Math.round((eMiles / eLimit) * 100), 100) : 0
+              const eStatus   = STATUS[deriveStatus(eMiles, eLimit)]
 
               return (
                 <div key={c.name}>
@@ -603,7 +679,7 @@ function ComponentAccordion({ bikes, setBikes, components, setComponents }) {
             })}
 
             {/* ── Bike Fit ── */}
-            {isOpen && OUTDOOR_TYPES.includes(bike.type) && (
+            {isOpen && BIKE_TYPES.includes(bike.type) && (
               <div style={{ borderTop: '0.5px solid rgba(15,31,28,0.10)', backgroundColor: '#F4F6F5' }}>
                 <div className="px-5 py-4">
                   <div className="flex items-center justify-between mb-3">
@@ -793,7 +869,7 @@ export default function EquipmentSection() {
     <div className="max-w-6xl mx-auto px-6 py-6">
       {/* Header */}
       <div className="mb-6">
-        <p className="section-title mb-1">Equipment</p>
+        <p className="section-title mb-1">Bikes and Equipment</p>
         <h1 className="text-2xl font-semibold mb-1">My Garage</h1>
         <p className="text-sm" style={{ color: '#637068' }}>
           All your bikes in one place — expand any bike to check component wear and fit measurements.

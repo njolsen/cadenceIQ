@@ -3,18 +3,20 @@ import TrainingAdaptation from '../athlete/TrainingAdaptation'
 
 const TABS = ['Load', 'Performance', 'Health']
 
-export default function AnalyticsSection() {
+export default function AnalyticsSection({ embedded = false }) {
   const [activeTab, setActiveTab] = useState('Load')
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-6">
-      {/* Page header */}
-      <div className="flex items-end justify-between mb-6">
-        <div>
-          <p className="section-title mb-1">Analytics</p>
-          <h1 className="text-2xl font-semibold">Training Insights</h1>
+    <div className={embedded ? '' : 'max-w-6xl mx-auto px-6 py-6'}>
+      {/* Page header — hidden when embedded as a sub-tab */}
+      {!embedded && (
+        <div className="flex items-end justify-between mb-6">
+          <div>
+            <p className="section-title mb-1">Analytics</p>
+            <h1 className="text-2xl font-semibold">Training Insights</h1>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Sub-tabs */}
       <div

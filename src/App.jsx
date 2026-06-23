@@ -17,7 +17,7 @@ export default function App() {
             <Route path="athlete"   element={<AthleteSection />} />
             <Route path="equipment" element={<EquipmentSection />} />
             <Route path="social"    element={<SocialSection />} />
-            <Route path="analytics" element={<AnalyticsSection />} />
+            <Route path="analytics" element={<Navigate to="/athlete" replace />} />
           </Route>
         </Routes>
       </BrowserRouter>
