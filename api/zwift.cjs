@@ -6,6 +6,25 @@ const os = require('os')
 const FitParser = require('../node_modules/fit-file-parser/dist/cjs/fit-parser.js').default
 const { fmtTime, metersToMiles, metersToFeet, inferIntensity, estTSS } = require('./utils.cjs')
 
+// Compute normalized power from per-second power records (30s rolling average, 4th power mean)
+function computeNP(records) {
+  const powers = records.filter(r => r.power != null).map(r => r.power)
+  if (powers.length < 30) return 0
+  const W = 30
+  const win = new Array(W).fill(0)
+  let winSum = 0, sum4 = 0, n = 0
+  for (let i = 0; i < powers.length; i++) {
+    winSum = winSum - win[i % W] + powers[i]
+    win[i % W] = powers[i]
+    if (i >= W - 1) {
+      const avg = winSum / W
+      sum4 += avg * avg * avg * avg
+      n++
+    }
+  }
+  return n > 0 ? Math.round(Math.pow(sum4 / n, 0.25)) : 0
+}
+
 const ZWIFT_DIR = path.join(os.homedir(), 'Documents', 'Zwift', 'Activities')
 
 // In-memory cache: filename → parsed activity
@@ -30,10 +49,12 @@ function parseFitFile(filePath, ftp) {
       const movingSecs = Math.round(s.total_timer_time || s.total_elapsed_time || 0)
       if (movingSecs < 300) return resolve(null) // skip files under 5 min
 
-      const avgPower = s.avg_power || 0
-      const tss = estTSS(movingSecs, avgPower, ftp)
+      const avgPower  = s.avg_power || 0
+      // Zwift doesn't write NP to the session record — compute it from per-second records
+      const normPower = computeNP(data.records || []) || avgPower
+      const tss = estTSS(movingSecs, normPower, ftp)
       const intensity = inferIntensity(avgPower, ftp)
-      const ifVal = ftp > 0 && avgPower > 0 ? parseFloat((avgPower / ftp).toFixed(3)) : null
+      const ifVal = ftp > 0 && normPower > 0 ? parseFloat((normPower / ftp).toFixed(3)) : null
 
       resolve({
         id: `zwift_${filename}`,
@@ -51,6 +72,7 @@ function parseFitFile(filePath, ftp) {
         cadence: s.avg_cadence || 0,
         heart_rate: s.avg_heart_rate || 0,
         avg_power: avgPower,
+        normalized_power: normPower !== avgPower ? normPower : null,
         intensity,
         est_tss: tss,
         intensity_factor: ifVal,

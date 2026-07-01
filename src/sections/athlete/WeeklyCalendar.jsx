@@ -295,6 +295,7 @@ export default function WeeklyCalendar({
   onAddCalendarEvent,
   onRemoveCalendarEvent,
   scheduleBlocks = [],
+  onActivitySelect,
 }) {
   const [currentMonth, setCurrentMonth] = useState({ year: 2026, month: 5 }) // June 2026
   const [showModal, setShowModal]   = useState(false)
@@ -741,7 +742,11 @@ function MonthView({ dividerRefs, todayRowRef, allEvents, seasonData, onDaySelec
 
                             {/* Completed activity — mini-box */}
                             {actDay && !race && (
-                              <div className="rounded-lg px-2 py-1.5 flex-1 flex flex-col justify-between" style={{ backgroundColor: 'rgba(0,168,126,0.06)', border: '0.5px solid rgba(0,168,126,0.2)' }}>
+                              <div
+                                className="rounded-lg px-2 py-1.5 flex-1 flex flex-col justify-between cursor-pointer"
+                                style={{ backgroundColor: 'rgba(0,168,126,0.06)', border: '0.5px solid rgba(0,168,126,0.2)' }}
+                                onClick={e => { e.stopPropagation(); onActivitySelect?.(actDay) }}
+                              >
                                 <p className="text-xs font-semibold leading-tight" style={{ color: 'var(--color-text)' }}>{actDay.primary.sport}</p>
                                 {actDay.totalDuration && (
                                   <p className="data-value text-sm font-bold leading-none mt-1" style={{ color: 'var(--color-text)' }}>{actDay.totalDuration}</p>

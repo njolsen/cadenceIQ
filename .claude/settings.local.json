@@ -38,7 +38,23 @@
       "Bash(git -C /Users/nickolsen/cadenceiq diff)",
       "Bash(brew list *)",
       "Bash(node_modules/.bin/vite build *)",
-      "Bash(pkill -f \"vite\")"
+      "Bash(pkill -f \"vite\")",
+      "Bash(brew install *)",
+      "Bash(/opt/homebrew/bin/gh pr *)",
+      "Bash(/opt/homebrew/bin/gh pr create --title 'Athlete: Season modal, BikeReg integration, calendar schedule awareness' --body ' *)",
+      "Bash(echo \"EXIT CODE: $?\")",
+      "Bash(curl -s http://localhost:3001/api/whoop/status)",
+      "Bash(pkill -f \"node api/server.cjs\")",
+      "Bash(pkill -f \"concurrently\")",
+      "Bash(curl -s http://localhost:3001/api/whoop/recovery)",
+      "Bash(pkill -f concurrently)",
+      "WebFetch(domain:developer.whoop.com)",
+      "Bash(awk -F: '$2 ~ /^}$/')",
+      "Bash(curl -s \"http://localhost:3001/api/activities?start=2026-06-30&end=2026-06-30&ftp=260\")",
+      "Bash(ls ~/Documents/Zwift/Activities/*.fit | grep \"2026-06-30\" 2>/dev/null | head -3)",
+      "Bash(node /Users/nickolsen/cadenceiq/api/server.cjs)",
+      "Bash(curl -s \"http://localhost:3001/api/activities?start=2026-06-30&end=2026-06-30&ftp=360\")",
+      "Bash(node -e \"const d=require\\('fs'\\).readFileSync\\('/dev/stdin','utf8'\\); const j=JSON.parse\\(d\\); const acts=j.byDate?.['2026-06-30']||[]; acts.forEach\\(a=>console.log\\(a.source, 'NP:', a.normalized_power, 'TSS:', a.est_tss, 'IF:', a.intensity_factor\\)\\)\")"
     ]
   }
 }

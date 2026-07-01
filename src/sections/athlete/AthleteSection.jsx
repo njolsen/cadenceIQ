@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import WeeklyCalendar from './WeeklyCalendar'
 import SeasonSetupModal from './SeasonSetupModal'
 import TrainingAdaptation from './TrainingAdaptation'
 import AnalyticsSection from '../analytics/AnalyticsSection'
 import { fetchActivities } from '../../services/activitiesApi'
+import { getWhoopStatus, getWhoopRecovery, connectWhoop, disconnectWhoop } from '../../services/whoopApi'
 import { useProfile } from '../../context/ProfileContext'
 import Avatar from '../../components/Avatar'
 
@@ -37,29 +39,176 @@ const DEFAULT_SEASON = {
   races: [],
 }
 
+// ─── Activity detail modal ────────────────────────────────────────────────────
+
+function sourceLabel(src) {
+  if (src === 'zwift')  return 'Zwift'
+  if (src === 'garmin') return 'Garmin'
+  if (src === 'whoop')  return 'Whoop'
+  if (src === 'strava') return 'Strava'
+  return src ?? 'Unknown'
+}
+
+function StatRow({ label, value, unit }) {
+  if (value == null || value === 0 || value === '') return null
+  return (
+    <div className="flex items-baseline justify-between py-2.5" style={{ borderBottom: '0.5px solid rgba(15,31,28,0.08)' }}>
+      <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>{label}</span>
+      <span className="data-value text-sm font-semibold" style={{ color: 'var(--color-text)' }}>
+        {value}{unit ? <span className="font-normal text-xs ml-0.5" style={{ color: 'var(--color-text-muted)' }}>{unit}</span> : null}
+      </span>
+    </div>
+  )
+}
+
+function ActivityDetailModal({ day, onClose }) {
+  const acts = day.all ?? [day.primary]
+  const fmtDate = d => {
+    if (!d) return ''
+    const [y, m, dd] = d.split('-').map(Number)
+    return new Date(y, m - 1, dd).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+  }
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ backgroundColor: 'rgba(10,22,40,0.55)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-sm mx-4 rounded-2xl overflow-hidden"
+        style={{ backgroundColor: 'var(--color-surface)', border: 'var(--border)', boxShadow: '0 8px 40px rgba(10,22,40,0.25)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-6 pt-5 pb-4" style={{ borderBottom: '0.5px solid rgba(15,31,28,0.08)' }}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="font-semibold text-base leading-tight" style={{ color: 'var(--color-text)' }}>
+                {acts[0]?.name ?? 'Activity'}
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                {fmtDate(acts[0]?.date)} · {sourceLabel(acts[0]?.source)}
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-sm"
+              style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}
+            >✕</button>
+          </div>
+          {/* Summary pills */}
+          <div className="flex gap-2 mt-3 flex-wrap">
+            <span className="data-value text-xs font-bold px-2.5 py-1 rounded-full"
+              style={{ backgroundColor: 'rgba(0,200,150,0.1)', color: '#00A87E' }}>
+              {day.totalTSS} TSS
+            </span>
+            <span className="data-value text-xs px-2.5 py-1 rounded-full"
+              style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text)' }}>
+              {day.totalDuration}
+            </span>
+            {day.totalDist > 0 && (
+              <span className="data-value text-xs px-2.5 py-1 rounded-full"
+                style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text)' }}>
+                {parseFloat(day.totalDist).toFixed(1)} mi
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="px-6 py-1 overflow-y-auto" style={{ maxHeight: '60vh' }}>
+          {acts.map((act, i) => (
+            <div key={act.id ?? i}>
+              {acts.length > 1 && (
+                <p className="text-[10px] uppercase tracking-widest font-semibold mt-3 mb-1"
+                  style={{ color: 'var(--color-text-muted)' }}>
+                  Activity {i + 1} — {act.name}
+                </p>
+              )}
+              <StatRow label="Duration"          value={act.duration} />
+              <StatRow label="Distance"          value={act.distance_mi ? parseFloat(act.distance_mi).toFixed(1) : null} unit=" mi" />
+              <StatRow label="Elevation"         value={act.elevation_ft ? Math.round(act.elevation_ft) : null} unit=" ft" />
+              <StatRow label="Avg Power"         value={act.avg_power || null} unit=" W" />
+              <StatRow label="Normalized Power"  value={act.normalized_power || null} unit=" W" />
+              <StatRow label="Intensity Factor"  value={act.intensity_factor || null} />
+              <StatRow label="TSS"               value={act.est_tss || null} />
+              <StatRow label="Avg Heart Rate"    value={act.heart_rate || null} unit=" bpm" />
+              <StatRow label="Max Heart Rate"    value={act.max_hr || null} unit=" bpm" />
+              <StatRow label="Avg Cadence"       value={act.cadence || null} unit=" rpm" />
+              <StatRow label="Calories"          value={act.calories || null} unit=" kcal" />
+              <StatRow label="Whoop Strain"      value={act.strain || null} />
+            </div>
+          ))}
+        </div>
+
+        <div className="px-6 pb-5 pt-3">
+          <button
+            onClick={onClose}
+            className="btn-primary w-full text-sm py-2.5"
+          >Done</button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
 // ─── Main section ─────────────────────────────────────────────────────────────
 
-const DEFAULT_TODAY_BLOCKS = [
-  { id: 1, type: 'work',   label: 'Work',   start: '08:00', end: '17:00' },
-  { id: 2, type: 'family', label: 'Family', start: '19:00', end: '20:30' },
-]
+const DEFAULT_TODAY_BLOCKS = []
 
 export default function AthleteSection() {
   const { profile, garminStatus } = useProfile()
-  const [activeTab, setActiveTab]     = useState('Overview')
+  const [activeTab, setActiveTab]       = useState('Overview')
   const [highlightDay, setHighlightDay] = useState(null)
-  const [seasonData, setSeasonData]   = useState(DEFAULT_SEASON)
-  const [showSeasonModal, setShowSeasonModal] = useState(false)
+  const [seasonData, setSeasonData]     = useState(DEFAULT_SEASON)
+  const [showSeasonModal, setShowSeasonModal]         = useState(false)
   const [showSeasonDateModal, setShowSeasonDateModal] = useState(false)
   const [activityByDate, setActivityByDate] = useState({})
-  const [todayBlocks, setTodayBlocks] = useState(DEFAULT_TODAY_BLOCKS)
+  const [todayBlocks, setTodayBlocks]   = useState(DEFAULT_TODAY_BLOCKS)
+  const [activityModal, setActivityModal] = useState(null) // { all: [...], primary: {...}, ... }
+
+  // Whoop live data — null = not connected / not yet fetched
+  const [whoopStatus, setWhoopStatus] = useState({ connected: false })
+  const [whoopLive,   setWhoopLive]   = useState(null)
+  const [whoopError,  setWhoopError]  = useState(null)
+
+  // On mount: check for OAuth redirect (?whoop=connected or ?whoop_error=...) + fetch status
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const oauthError = params.get('whoop_error')
+    if (oauthError) {
+      setWhoopError(decodeURIComponent(oauthError))
+      window.history.replaceState({}, '', window.location.pathname)
+    } else if (params.get('whoop') === 'connected') {
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+    getWhoopStatus().then(status => {
+      setWhoopStatus(status)
+      if (status.connected) fetchWhoopRecovery()
+    })
+  }, [])
+
+  function fetchWhoopRecovery() {
+    getWhoopRecovery()
+      .then(data => setWhoopLive(data))
+      .catch(() => {})
+  }
+
+  function handleDisconnectWhoop() {
+    disconnectWhoop().then(() => {
+      setWhoopStatus({ connected: false })
+      setWhoopLive(null)
+    })
+  }
 
   useEffect(() => {
     refreshActivities()
   }, [garminStatus.connected])
 
   function refreshActivities() {
-    fetchActivities('2026-06-01', '2026-06-30')
+    fetchActivities('2026-06-01', '2026-06-30', profile.ftp)
       .then(data => setActivityByDate(data.byDate || {}))
       .catch(() => {})
   }
@@ -152,10 +301,11 @@ export default function AthleteSection() {
             onClearHighlight={() => setHighlightDay(null)}
             activityByDate={activityByDate}
             athleteFtp={profile.ftp}
-            readinessScore={WHOOP_DATA.recovery}
+            readinessScore={whoopLive?.recovery ?? WHOOP_DATA.recovery}
             onAddCalendarEvent={handleAddCalendarEvent}
             onRemoveCalendarEvent={handleRemoveCalendarEvent}
             scheduleBlocks={todayBlocks}
+            onActivitySelect={day => setActivityModal(day)}
           />
         </div>
         {showSeasonDateModal && (
@@ -175,6 +325,9 @@ export default function AthleteSection() {
             onConfirm={data => { setSeasonData(data); setShowSeasonModal(false) }}
           />
         )}
+        {activityModal && (
+          <ActivityDetailModal day={activityModal} onClose={() => setActivityModal(null)} />
+        )}
       </div>
     )
   }
@@ -183,6 +336,15 @@ export default function AthleteSection() {
     <div className="max-w-6xl mx-auto px-6 py-6">
       {pageHeader}
       {subTabs}
+      {whoopError && (
+        <div
+          className="mb-4 px-4 py-3 rounded-xl text-sm flex items-center justify-between"
+          style={{ backgroundColor: 'rgba(232,85,85,0.1)', color: '#E85555', border: '0.5px solid rgba(232,85,85,0.25)' }}
+        >
+          <span><strong>Whoop connection failed:</strong> {whoopError}</span>
+          <button onClick={() => setWhoopError(null)} className="ml-4 opacity-60 hover:opacity-100">✕</button>
+        </div>
+      )}
       {activeTab === 'Overview' && (
         <OverviewTab
           seasonData={seasonData}
@@ -190,6 +352,10 @@ export default function AthleteSection() {
           onDayClick={goToCalendar}
           todayBlocks={todayBlocks}
           setTodayBlocks={setTodayBlocks}
+          whoopStatus={whoopStatus}
+          whoopLive={whoopLive}
+          onConnectWhoop={connectWhoop}
+          onDisconnectWhoop={handleDisconnectWhoop}
         />
       )}
       {showSeasonModal && (
@@ -787,6 +953,13 @@ function readinessColor(score) {
   return               { stroke: '#E85555', text: '#C94444', bg: 'rgba(232,85,85,0.08)' }
 }
 
+// Matches Whoop's own green/yellow/red thresholds
+function whoopRecoveryColor(score) {
+  if (score >= 67) return { bg: 'rgba(0,200,150,0.18)',  text: '#00C896' }
+  if (score >= 34) return { bg: 'rgba(245,166,35,0.18)', text: '#F5A623' }
+  return                  { bg: 'rgba(232,85,85,0.18)',  text: '#E85555' }
+}
+
 function readinessLabel(score) {
   if (score >= 85) return 'Primed to train'
   if (score >= 75) return 'Good to train'
@@ -1155,11 +1328,11 @@ function TimeInput({ value, onChange }) {
         style={{
           border: open ? '0.5px solid var(--color-accent)' : 'var(--border)',
           backgroundColor: '#FFFFFF',
-          color: 'var(--color-text)',
+          color: value ? 'var(--color-text)' : 'var(--color-text-muted)',
           minWidth: 88,
         }}
       >
-        <span className="flex-1 text-left">{fmtTime(value)}</span>
+        <span className="flex-1 text-left">{value ? fmtTime(value) : 'Pick time'}</span>
         <svg width="8" height="8" viewBox="0 0 8 8" fill="none" style={{ opacity: 0.35, flexShrink: 0 }}>
           <path d="M1 3L4 6L7 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
@@ -1363,16 +1536,31 @@ function ModifierRow({ label, options, value, onChange }) {
   )
 }
 
-function DailyReadiness({ seasonData, onSetupSeason, blocks, setBlocks }) {
+function mergeWhoopData(live) {
+  if (!live) return WHOOP_DATA
+  return {
+    ...WHOOP_DATA,
+    syncedAt:  live.syncedAt ?? WHOOP_DATA.syncedAt,
+    recovery:  live.recovery ?? WHOOP_DATA.recovery,
+    hrv:       { ...WHOOP_DATA.hrv,       value: live.hrv   ?? WHOOP_DATA.hrv.value,       trend: live.hrvTrend   ?? WHOOP_DATA.hrv.trend },
+    sleep:     { ...WHOOP_DATA.sleep,     value: live.sleep  ?? WHOOP_DATA.sleep.value,     trend: live.sleepTrend ?? WHOOP_DATA.sleep.trend },
+    restingHR: { ...WHOOP_DATA.restingHR, value: live.rhr   ?? WHOOP_DATA.restingHR.value,  trend: live.rhrTrend   ?? WHOOP_DATA.restingHR.trend },
+  }
+}
+
+function DailyReadiness({ seasonData, onSetupSeason, blocks, setBlocks, whoopStatus, whoopLive, onConnectWhoop, onDisconnectWhoop }) {
+  const whoop = mergeWhoopData(whoopLive)
+
   const [planDate, setPlanDate] = useState(localToday())
   const planDateObj = new Date(planDate + 'T12:00:00')
   const dayName = planDateObj.toLocaleDateString('en-US', { weekday: 'long' })
   const dateStr = planDateObj.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
 
   // Wake is auto-set from Whoop — read-only
-  const wake = WHOOP_DATA.wakeTime
+  const wake = whoop.wakeTime
 
-  const [bed, setBed] = useState('21:30')
+  const [bed, setBed] = useState(null)
+  const effectiveBed = bed ?? '22:00' // fallback for timeline calculations until user sets bedtime
   const [addForm,    setAddForm]    = useState({ ...BLOCK_DEFAULTS })
   const [editingId,  setEditingId]  = useState(null)
   const [editForm,   setEditForm]   = useState({})
@@ -1381,7 +1569,7 @@ function DailyReadiness({ seasonData, onSetupSeason, blocks, setBlocks }) {
   const [hasCheckedIn, setHasCheckedIn] = useState(false)
 
   // Computed values
-  const windows    = gapsFromBlocks(wake, bed, blocks)
+  const windows    = gapsFromBlocks(wake, effectiveBed, blocks)
   const bestWindow = windows[0] ?? { duration: 0 }
   const availHours = bestWindow.duration
 
@@ -1399,31 +1587,32 @@ function DailyReadiness({ seasonData, onSetupSeason, blocks, setBlocks }) {
 
   // Training readiness: average of Whoop internal score + external score
   // Only revealed once the user explicitly logs their day
-  const readiness = hasCheckedIn ? Math.round((WHOOP_DATA.recovery + externalScore) / 2) : null
+  const readiness = hasCheckedIn ? Math.round((whoop.recovery + externalScore) / 2) : null
   const c = readiness !== null
     ? readinessColor(readiness)
     : { stroke: 'rgba(255,255,255,0.18)', text: 'rgba(255,255,255,0.18)', bg: 'rgba(255,255,255,0.05)' }
-  const rec = trainingRec(availHours, readiness ?? WHOOP_DATA.recovery)
+  const rec = trainingRec(availHours, readiness ?? whoop.recovery)
 
   const BLOCK_COLOR = { work: '#1B6FD8', school: '#A78BFA', social: '#F5A623', family: '#E86D2E', other: '#94A3B8' }
   const BLOCK_LABEL = { work: 'Work', school: 'School', social: 'Social', family: 'Family', other: 'Other' }
   const TAG_OPTIONS = ['work', 'school', 'social', 'family', 'other']
 
   return (
+    <>
+    <p className="text-base font-bold mb-3" style={{ color: '#0A1628' }}>
+      {dayName}, {dateStr}
+    </p>
     <div className="card overflow-hidden">
 
       {/* ── Dark hero header ── */}
       <div style={{ backgroundColor: '#0A1628' }}>
         <div className="px-5 pt-4 pb-4">
-          <p className="data-value text-sm font-bold mb-3" style={{ color: '#ffffff' }}>
-            {dayName}, {dateStr}
-          </p>
           <div className="flex items-stretch">
 
             {/* ── Left — Training Readiness ring ── */}
             <div className="flex flex-col items-center justify-center pr-6 py-1">
               <p className="text-[9px] uppercase tracking-widest font-semibold mb-3"
-                style={{ color: 'rgba(255,255,255,0.45)' }}>Today's Training Readiness</p>
+                style={{ color: '#ffffff' }}>Today's Training Readiness</p>
               <div className="relative" style={{ width: 148, height: 148 }}>
                 <svg width="148" height="148" style={{ transform: 'rotate(-90deg)' }}>
                   {/* Track */}
@@ -1431,7 +1620,7 @@ function DailyReadiness({ seasonData, onSetupSeason, blocks, setBlocks }) {
                   {/* Whoop base arc */}
                   <circle cx="74" cy="74" r="60" fill="none"
                     stroke="rgba(0,200,150,0.25)" strokeWidth="11" strokeLinecap="round"
-                    strokeDasharray={`${2 * Math.PI * 60 * WHOOP_DATA.recovery / 100} ${2 * Math.PI * 60}`}
+                    strokeDasharray={`${2 * Math.PI * 60 * whoop.recovery / 100} ${2 * Math.PI * 60}`}
                     style={{ transition: 'stroke-dashoffset 0.5s ease' }}
                   />
                   {/* Combined readiness arc */}
@@ -1450,29 +1639,16 @@ function DailyReadiness({ seasonData, onSetupSeason, blocks, setBlocks }) {
                       {readinessLabel(readiness)}
                     </p>
                   ) : (
-                    <p className="text-[9px] text-center px-4 mt-1 leading-snug" style={{ color: 'rgba(255,255,255,0.30)' }}>
+                    <p className="text-[9px] text-center px-4 mt-1 leading-snug" style={{ color: 'rgba(255,255,255,0.70)' }}>
                       Log load<br />to unlock
                     </p>
                   )}
                 </div>
               </div>
               <div className="flex items-center gap-1.5 mt-3">
-                <span className="data-value text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                  style={{ backgroundColor: 'rgba(0,200,150,0.18)', color: '#00C896' }}>
-                  {WHOOP_DATA.recovery} Whoop
-                </span>
-                <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.20)' }}>+</span>
-                {readiness !== null ? (
-                  <span className="data-value text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                    style={{ backgroundColor: `${extScoreColor.stroke}25`, color: extScoreColor.text }}>
-                    {externalScore} day load
-                  </span>
-                ) : (
-                  <span className="data-value text-[10px] px-2 py-0.5 rounded-full"
-                    style={{ backgroundColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.25)' }}>
-                    ? day load
-                  </span>
-                )}
+                <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.80)' }}>Internal Health</span>
+                <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.50)' }}>+</span>
+                <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.80)' }}>External Load</span>
               </div>
             </div>
 
@@ -1487,23 +1663,48 @@ function DailyReadiness({ seasonData, onSetupSeason, blocks, setBlocks }) {
 
                 {/* Internal Health */}
                 <div className="flex flex-col gap-2 flex-1">
-                  <p className="data-value text-[9px] uppercase tracking-widest font-semibold"
-                    style={{ color: 'rgba(255,255,255,0.45)' }}>Internal Health</p>
+                  <div className="flex items-center justify-between">
+                    <p className="data-value text-[9px] uppercase tracking-widest font-semibold"
+                      style={{ color: '#ffffff' }}>Internal Health</p>
+                    {whoopStatus?.connected ? (
+                      <button onClick={onDisconnectWhoop}
+                        className="text-[9px] font-medium px-1.5 py-0.5 rounded"
+                        style={{ color: 'rgba(255,255,255,0.70)', backgroundColor: 'rgba(255,255,255,0.10)' }}>
+                        Whoop ✓
+                      </button>
+                    ) : (
+                      <button onClick={onConnectWhoop}
+                        className="text-[9px] font-semibold px-1.5 py-0.5 rounded"
+                        style={{ color: '#00C896', backgroundColor: 'rgba(0,200,150,0.12)' }}>
+                        Connect Whoop
+                      </button>
+                    )}
+                  </div>
+                  {whoopStatus?.connected && (
+                    <div className="flex items-baseline gap-2">
+                      <span className="data-value text-[9px] uppercase tracking-wider"
+                        style={{ color: '#ffffff' }}>Recovery Score</span>
+                      <span className="data-value text-base font-bold leading-none"
+                        style={(() => { const c = whoopRecoveryColor(whoop.recovery); return { color: c.text } })()}>
+                        {whoop.recovery}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-start gap-5">
                     {[
-                      { label: 'HRV',   val: WHOOP_DATA.hrv.value,      unit: 'ms',  trend: WHOOP_DATA.hrv.trend,      inverted: false },
-                      { label: 'Sleep', val: WHOOP_DATA.sleep.value,     unit: 'h',   trend: WHOOP_DATA.sleep.trend,    inverted: false },
-                      { label: 'RHR',   val: WHOOP_DATA.restingHR.value, unit: 'bpm', trend: WHOOP_DATA.restingHR.trend, inverted: true  },
+                      { label: 'HRV',   val: whoop.hrv.value,      unit: 'ms',  trend: whoop.hrv.trend,      inverted: false },
+                      { label: 'Sleep', val: whoop.sleep.value,     unit: 'h',   trend: whoop.sleep.trend,    inverted: false },
+                      { label: 'RHR',   val: whoop.restingHR.value, unit: 'bpm', trend: whoop.restingHR.trend, inverted: true  },
                     ].map(m => {
                       const isPositive = m.inverted ? m.trend === 'down' : m.trend !== 'down'
-                      const col = m.trend === 'flat' ? 'rgba(255,255,255,0.45)' : isPositive ? '#00C896' : '#E85555'
+                      const col = m.trend === 'flat' ? '#ffffff' : isPositive ? '#00C896' : '#E85555'
                       const arrow = m.trend === 'up' ? '↑' : m.trend === 'down' ? '↓' : '→'
                       return (
                         <div key={m.label}>
                           <p className="data-value text-[9px] uppercase tracking-wider mb-1"
-                            style={{ color: 'rgba(255,255,255,0.30)' }}>{m.label}</p>
+                            style={{ color: '#ffffff' }}>{m.label}</p>
                           <p className="data-value font-bold" style={{ fontSize: 18, lineHeight: 1, color: col }}>
-                            {m.val}<span className="font-normal ml-0.5" style={{ fontSize: 9, color: 'rgba(255,255,255,0.30)' }}>{m.unit}</span>
+                            {m.val}<span className="font-normal ml-0.5" style={{ fontSize: 9, color: 'rgba(255,255,255,0.70)' }}>{m.unit}</span>
                           </p>
                           <p className="data-value text-[10px] mt-0.5" style={{ color: col }}>{arrow}</p>
                         </div>
@@ -1519,7 +1720,7 @@ function DailyReadiness({ seasonData, onSetupSeason, blocks, setBlocks }) {
                 <div className="flex flex-col gap-2 flex-1">
                   <div className="flex items-center gap-2">
                     <p className="data-value text-[9px] uppercase tracking-widest font-semibold"
-                      style={{ color: 'rgba(255,255,255,0.45)' }}>External Load</p>
+                      style={{ color: '#ffffff' }}>External Load</p>
                     <span className="w-1.5 h-1.5 rounded-full"
                       style={{ backgroundColor: hasCheckedIn ? '#00C896' : 'rgba(255,255,255,0.18)' }} />
                     <span className="data-value text-[9px]"
@@ -1530,29 +1731,29 @@ function DailyReadiness({ seasonData, onSetupSeason, blocks, setBlocks }) {
                   <div className="flex items-start gap-5">
                     <div>
                       <p className="data-value text-[9px] uppercase tracking-wider mb-1"
-                        style={{ color: 'rgba(255,255,255,0.30)' }}>Commitments</p>
+                        style={{ color: '#ffffff' }}>Commitments</p>
                       <p className="data-value font-bold" style={{ fontSize: 18, lineHeight: 1, color: blocks.length > 3 ? '#F5A623' : 'rgba(255,255,255,0.75)' }}>
-                        {blocks.length}<span className="font-normal ml-0.5" style={{ fontSize: 9, color: 'rgba(255,255,255,0.30)' }}>{blocks.length === 1 ? 'blk' : 'blks'}</span>
+                        {blocks.length}<span className="font-normal ml-0.5" style={{ fontSize: 9, color: 'rgba(255,255,255,0.70)' }}>{blocks.length === 1 ? 'blk' : 'blks'}</span>
                       </p>
                     </div>
                     <div>
                       <p className="data-value text-[9px] uppercase tracking-wider mb-1"
-                        style={{ color: 'rgba(255,255,255,0.30)' }}>Free Time</p>
+                        style={{ color: '#ffffff' }}>Free Time</p>
                       <p className="data-value font-bold"
                         style={{ fontSize: 18, lineHeight: 1, color: totalFreeHours >= 4 ? '#00C896' : totalFreeHours >= 2 ? '#F5A623' : '#E85555' }}>
-                        {totalFreeHours.toFixed(1)}<span className="font-normal ml-0.5" style={{ fontSize: 9, color: 'rgba(255,255,255,0.30)' }}>h</span>
+                        {totalFreeHours.toFixed(1)}<span className="font-normal ml-0.5" style={{ fontSize: 9, color: 'rgba(255,255,255,0.70)' }}>h</span>
                       </p>
                     </div>
                     <div>
                       <p className="data-value text-[9px] uppercase tracking-wider mb-1"
-                        style={{ color: 'rgba(255,255,255,0.30)' }}>Modifiers</p>
+                        style={{ color: '#ffffff' }}>Modifiers</p>
                       {modPenalty > 0 ? (
                         <div className="flex flex-col gap-0.5">
                           {stress !== 'none' && <span className="data-value text-[10px] font-semibold capitalize" style={{ color: '#F5A623' }}>{stress} stress</span>}
                           {injury !== 'none' && <span className="data-value text-[10px] font-semibold capitalize" style={{ color: '#F5A623' }}>{injury} injury</span>}
                         </div>
                       ) : (
-                        <p className="data-value text-[10px]" style={{ color: 'rgba(255,255,255,0.25)' }}>None</p>
+                        <p className="data-value text-[10px]" style={{ color: 'rgba(255,255,255,0.70)' }}>None</p>
                       )}
                     </div>
                   </div>
@@ -1566,13 +1767,13 @@ function DailyReadiness({ seasonData, onSetupSeason, blocks, setBlocks }) {
               {/* My Day — timeline anchored at bottom */}
               <div className="flex items-center gap-4">
                 <p className="data-value text-[9px] uppercase tracking-widest font-semibold shrink-0"
-                  style={{ color: 'rgba(255,255,255,0.45)' }}>My Day</p>
-                <MiniTimeline wake={wake} bed={bed} blocks={blocks} windows={windows} dark={true} />
+                  style={{ color: '#ffffff' }}>My Day</p>
+                <MiniTimeline wake={wake} bed={effectiveBed} blocks={blocks} windows={windows} dark={true} />
                 <div className="flex items-baseline gap-0.5 shrink-0">
                   <span className="data-value text-2xl font-bold leading-none" style={{ color: extScoreColor.text }}>
                     {externalScore}
                   </span>
-                  <span className="text-[10px] ml-1" style={{ color: 'rgba(255,255,255,0.30)' }}>/ 100</span>
+                  <span className="text-[10px] ml-1" style={{ color: 'rgba(255,255,255,0.70)' }}>/ 100</span>
                 </div>
               </div>
 
@@ -1603,9 +1804,14 @@ function DailyReadiness({ seasonData, onSetupSeason, blocks, setBlocks }) {
                 </div>
                 <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>→</span>
                 <TimeInput value={bed} onChange={setBed} />
-                <span className="data-value text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                  {Math.round((toDec(bed) - toDec(wake)) * 10) / 10}h day
-                </span>
+                {bed
+                  ? <span className="data-value text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                      {Math.round((toDec(bed) - toDec(wake)) * 10) / 10}h day
+                    </span>
+                  : <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                      Select your target bedtime
+                    </span>
+                }
               </div>
             </div>
           </div>
@@ -1857,6 +2063,7 @@ function DailyReadiness({ seasonData, onSetupSeason, blocks, setBlocks }) {
         </div>
       </div>
     </div>
+    </>
   )
 }
 
@@ -1875,10 +2082,19 @@ function AlertCard() {
   )
 }
 
-function OverviewTab({ seasonData, onSetupSeason, todayBlocks, setTodayBlocks }) {
+function OverviewTab({ seasonData, onSetupSeason, todayBlocks, setTodayBlocks, whoopStatus, whoopLive, onConnectWhoop, onDisconnectWhoop }) {
   return (
     <div className="space-y-4">
-      <DailyReadiness seasonData={seasonData} onSetupSeason={onSetupSeason} blocks={todayBlocks} setBlocks={setTodayBlocks} />
+      <DailyReadiness
+        seasonData={seasonData}
+        onSetupSeason={onSetupSeason}
+        blocks={todayBlocks}
+        setBlocks={setTodayBlocks}
+        whoopStatus={whoopStatus}
+        whoopLive={whoopLive}
+        onConnectWhoop={onConnectWhoop}
+        onDisconnectWhoop={onDisconnectWhoop}
+      />
       <AlertCard />
     </div>
   )
