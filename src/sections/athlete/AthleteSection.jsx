@@ -7,6 +7,11 @@ import { fetchActivities } from '../../services/activitiesApi'
 import { useProfile } from '../../context/ProfileContext'
 import Avatar from '../../components/Avatar'
 
+function localToday() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
 const TABS = ['Overview', 'Training & Racing Calendar', 'Analytics']
 
 // Shared week data (used by Overview glance + Calendar)
@@ -34,6 +39,11 @@ const DEFAULT_SEASON = {
 
 // ─── Main section ─────────────────────────────────────────────────────────────
 
+const DEFAULT_TODAY_BLOCKS = [
+  { id: 1, type: 'work',   label: 'Work',   start: '08:00', end: '17:00' },
+  { id: 2, type: 'family', label: 'Family', start: '19:00', end: '20:30' },
+]
+
 export default function AthleteSection() {
   const { profile, garminStatus } = useProfile()
   const [activeTab, setActiveTab]     = useState('Overview')
@@ -42,6 +52,7 @@ export default function AthleteSection() {
   const [showSeasonModal, setShowSeasonModal] = useState(false)
   const [showSeasonDateModal, setShowSeasonDateModal] = useState(false)
   const [activityByDate, setActivityByDate] = useState({})
+  const [todayBlocks, setTodayBlocks] = useState(DEFAULT_TODAY_BLOCKS)
 
   useEffect(() => {
     refreshActivities()
@@ -124,7 +135,7 @@ export default function AthleteSection() {
   if (activeTab === 'Training & Racing Calendar') {
     return (
       <div className="h-full flex flex-col overflow-hidden">
-        {/* Static: header + tabs + season arc */}
+        {/* Static: header + tabs + season arc — constrained width */}
         <div className="shrink-0 max-w-6xl w-full mx-auto px-6 pt-6">
           {pageHeader}
           {subTabs}
@@ -132,27 +143,30 @@ export default function AthleteSection() {
             <SeasonArc seasonData={seasonData} onEditDates={() => setShowSeasonDateModal(true)} />
           </div>
         </div>
-        {/* Scrollable: calendar only */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-6xl mx-auto px-6 pb-6">
-            <WeeklyCalendar
-              seasonData={seasonData}
-              onSetupSeason={() => setShowSeasonModal(true)}
-              highlightDay={highlightDay}
-              onClearHighlight={() => setHighlightDay(null)}
-              activityByDate={activityByDate}
-              athleteFtp={profile.ftp}
-              readinessScore={WHOOP_DATA.recovery}
-              onAddCalendarEvent={handleAddCalendarEvent}
-              onRemoveCalendarEvent={handleRemoveCalendarEvent}
-            />
-          </div>
+        {/* Calendar fills all remaining height, stretches full width */}
+        <div className="flex-1 overflow-hidden px-4 pb-4">
+          <WeeklyCalendar
+            seasonData={seasonData}
+            onSetupSeason={() => setShowSeasonModal(true)}
+            highlightDay={highlightDay}
+            onClearHighlight={() => setHighlightDay(null)}
+            activityByDate={activityByDate}
+            athleteFtp={profile.ftp}
+            readinessScore={WHOOP_DATA.recovery}
+            onAddCalendarEvent={handleAddCalendarEvent}
+            onRemoveCalendarEvent={handleRemoveCalendarEvent}
+            scheduleBlocks={todayBlocks}
+          />
         </div>
         {showSeasonDateModal && (
-          <SeasonDateModal
+          <SeasonViewModal
             season={seasonData.season}
+            races={seasonData.races ?? []}
             onClose={() => setShowSeasonDateModal(false)}
-            onSave={season => { setSeasonData(prev => ({ ...prev, season })); setShowSeasonDateModal(false) }}
+            onSaveDates={season => setSeasonData(prev => ({ ...prev, season }))}
+            onAddRace={race => setSeasonData(prev => ({ ...prev, races: [...(prev.races ?? []), { id: Date.now(), ...race }] }))}
+            onRemoveRace={id => setSeasonData(prev => ({ ...prev, races: (prev.races ?? []).filter(r => r.id !== id) }))}
+            onUpdateRace={updates => setSeasonData(prev => ({ ...prev, races: (prev.races ?? []).map(r => r.id === updates.id ? { ...r, ...updates } : r) }))}
           />
         )}
         {showSeasonModal && (
@@ -174,6 +188,8 @@ export default function AthleteSection() {
           seasonData={seasonData}
           onSetupSeason={() => setShowSeasonModal(true)}
           onDayClick={goToCalendar}
+          todayBlocks={todayBlocks}
+          setTodayBlocks={setTodayBlocks}
         />
       )}
       {showSeasonModal && (
@@ -205,7 +221,7 @@ export function SeasonArc({ seasonData, onEditDates, onSetupSeason, onRaceClick 
     )
   }
 
-  const today = new Date(new Date().toISOString().slice(0, 10))
+  const today = new Date(localToday())
   const start = new Date(seasonData.season.start)
   const end   = new Date(seasonData.season.end)
   const totalMs = end - start
@@ -294,17 +310,85 @@ export function SeasonArc({ seasonData, onEditDates, onSetupSeason, onRaceClick 
           className="text-[11px] px-2 py-0.5 rounded-full transition-colors"
           style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text-muted)', border: 'var(--border)' }}
         >
-          Edit
+          View
         </button>
       </div>
     </div>
   )
 }
 
-function SeasonDateModal({ season, onClose, onSave }) {
+const EVENT_TYPES = ['Crit', 'Road Race', 'Time Trial', 'Gran Fondo', 'Other']
+const PRIORITIES  = ['A Race', 'B Race', 'C Race']
+
+const BIKEREG_EVENTS = [
+  { id: 'br001', name: 'Battenkill Road Race',             date: '2026-04-11', location: 'Cambridge, NY',        eventType: 'Road Race',  distance: '62 mi',       fee: '$70',  status: 'open',     url: 'https://www.bikereg.com/battenkill-road-race'           },
+  { id: 'br002', name: 'Gran Fondo New York',              date: '2026-05-17', location: 'Fort Lee, NJ',         eventType: 'Gran Fondo', distance: '100 mi',      fee: '$150', status: 'open',     url: 'https://www.bikereg.com/gran-fondo-new-york'            },
+  { id: 'br003', name: 'Somerville Criterium',             date: '2026-05-25', location: 'Somerville, NJ',       eventType: 'Crit',       distance: '50 min + 5',  fee: '$40',  status: 'open',     url: 'https://www.bikereg.com/somerville-criterium'           },
+  { id: 'br004', name: 'Air Force Cycling Classic',        date: '2026-05-30', location: 'Arlington, VA',        eventType: 'Crit',       distance: '40 min + 5',  fee: '$35',  status: 'waitlist', url: 'https://www.bikereg.com/air-force-cycling-classic'      },
+  { id: 'br005', name: 'Philly Bike Race',                 date: '2026-06-07', location: 'Philadelphia, PA',     eventType: 'Crit',       distance: '60 min + 5',  fee: '$45',  status: 'open',     url: 'https://www.bikereg.com/philly-bike-race'               },
+  { id: 'br006', name: 'Tour de Cure New York',            date: '2026-06-13', location: 'Saratoga Springs, NY', eventType: 'Gran Fondo', distance: '100 mi',      fee: '$55',  status: 'open',     url: 'https://www.bikereg.com/tour-de-cure-new-york'          },
+  { id: 'br007', name: 'Intelligentsia Cup',               date: '2026-07-10', location: 'Chicago, IL',          eventType: 'Crit',       distance: '8 days',      fee: '$85',  status: 'open',     url: 'https://www.bikereg.com/intelligentsia-cup'             },
+  { id: 'br008', name: 'Cascade Cycling Classic',          date: '2026-07-17', location: 'Bend, OR',             eventType: 'Road Race',  distance: '5-day stage', fee: '$140', status: 'open',     url: 'https://www.bikereg.com/cascade-cycling-classic'        },
+  { id: 'br009', name: 'Louisville Criterium',             date: '2026-07-25', location: 'Louisville, KY',       eventType: 'Crit',       distance: '50 min + 5',  fee: '$38',  status: 'open',     url: 'https://www.bikereg.com/louisville-criterium'           },
+  { id: 'br010', name: 'Tour of the Catskills',            date: '2026-08-14', location: 'Arkville, NY',         eventType: 'Road Race',  distance: '85 mi',       fee: '$65',  status: 'open',     url: 'https://www.bikereg.com/tour-of-the-catskills'          },
+  { id: 'br011', name: 'Mt. Washington Hillclimb',         date: '2026-08-22', location: 'Gorham, NH',           eventType: 'Time Trial', distance: '7.6 mi',      fee: '$80',  status: 'waitlist', url: 'https://www.bikereg.com/mt-washington-hillclimb'        },
+  { id: 'br012', name: 'Green Mountain Stage Race',        date: '2026-08-27', location: 'Burlington, VT',       eventType: 'Road Race',  distance: '4-day stage', fee: '$130', status: 'open',     url: 'https://www.bikereg.com/green-mountain-stage-race'      },
+  { id: 'br013', name: 'Tour of Somerville',               date: '2026-09-12', location: 'Somerville, NJ',       eventType: 'Road Race',  distance: '62 mi',       fee: '$60',  status: 'open',     url: 'https://www.bikereg.com/tour-of-somerville'             },
+  { id: 'br014', name: 'USA Cycling Masters TT Nationals', date: '2026-09-19', location: 'Winston-Salem, NC',    eventType: 'Time Trial', distance: '20 km',       fee: '$55',  status: 'open',     url: 'https://www.bikereg.com/usa-cycling-masters-tt'         },
+  { id: 'br015', name: 'Gateway Cup',                      date: '2026-09-04', location: 'St. Louis, MO',        eventType: 'Crit',       distance: '4 days',      fee: '$80',  status: 'open',     url: 'https://www.bikereg.com/gateway-cup'                    },
+  { id: 'br016', name: 'Hincapie Gran Fondo',              date: '2026-10-03', location: 'Greenville, SC',       eventType: 'Gran Fondo', distance: '80 mi',       fee: '$95',  status: 'open',     url: 'https://www.bikereg.com/hincapie-gran-fondo'            },
+  { id: 'br017', name: 'Joe Martin Stage Race',            date: '2026-04-23', location: 'Fayetteville, AR',     eventType: 'Road Race',  distance: '4-day stage', fee: '$120', status: 'open',     url: 'https://www.bikereg.com/joe-martin-stage-race'          },
+  { id: 'br018', name: 'Valley of the Sun Stage Race',     date: '2026-02-19', location: 'Glendale, AZ',         eventType: 'Road Race',  distance: '3-day stage', fee: '$100', status: 'closed',   url: 'https://www.bikereg.com/valley-of-the-sun-stage-race'   },
+]
+
+function SeasonViewModal({ season, races, onClose, onSaveDates, onAddRace, onRemoveRace, onUpdateRace }) {
   const [start, setStart] = useState(season?.start ?? '')
   const [end,   setEnd]   = useState(season?.end   ?? '')
-  const canSave = start && end && new Date(start) < new Date(end)
+  const [editingDates, setEditingDates] = useState(!season?.start || !season?.end)
+  const canSaveDates = start && end && new Date(start) < new Date(end)
+
+  // BikeReg browser state
+  const [showBikeReg,   setShowBikeReg]   = useState(false)
+  const [brSearch,      setBrSearch]      = useState('')
+  const [brType,        setBrType]        = useState('All')
+  const [pendingAddId,  setPendingAddId]  = useState(null)
+  const [pendingPri,    setPendingPri]    = useState('B Race')
+
+  // New event form state
+  const [adding,    setAdding]    = useState(false)
+  const [evtName,   setEvtName]   = useState('')
+  const [evtDate,   setEvtDate]   = useState('')
+  const [evtLoc,    setEvtLoc]    = useState('')
+  const [evtType,   setEvtType]   = useState('Road Race')
+  const [evtPri,    setEvtPri]    = useState('B Race')
+  const canAddEvt = evtName.trim().length > 0 && evtDate.length > 0
+
+  function handleSaveDates() {
+    if (!canSaveDates) return
+    onSaveDates({ start, end })
+    setEditingDates(false)
+  }
+
+  function handleAddEvent() {
+    if (!canAddEvt) return
+    onAddRace({ name: evtName.trim(), date: evtDate, location: evtLoc.trim(), eventType: evtType, priority: evtPri })
+    setEvtName(''); setEvtDate(''); setEvtLoc(''); setEvtType('Road Race'); setEvtPri('B Race')
+    setAdding(false)
+  }
+
+  const sortedRaces = [...races].sort((a, b) => a.date.localeCompare(b.date))
+
+  const addedNames = new Set(races.map(r => r.name.toLowerCase()))
+  const brTypeOptions = ['All', ...EVENT_TYPES]
+  const todayIso = localToday()
+  const filteredBR = BIKEREG_EVENTS.filter(e => {
+    if (e.status === 'closed') return false
+    if (e.date < todayIso) return false
+    const matchType   = brType === 'All' || e.eventType === brType
+    const q = brSearch.trim().toLowerCase()
+    const matchSearch = !q || e.name.toLowerCase().includes(q) || e.location.toLowerCase().includes(q)
+    return matchType && matchSearch
+  }).sort((a, b) => a.date.localeCompare(b.date))
 
   return (
     <div
@@ -312,36 +396,369 @@ function SeasonDateModal({ season, onClose, onSave }) {
       style={{ backgroundColor: 'rgba(10,22,40,0.55)', backdropFilter: 'blur(4px)' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="w-full max-w-sm rounded-2xl p-6 relative" style={{ backgroundColor: '#FFFFFF', boxShadow: '0 8px 40px rgba(15,31,28,0.16)' }}>
-        <button onClick={onClose}
-          className="absolute top-5 right-5 w-7 h-7 rounded-full flex items-center justify-center text-sm"
-          style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}>✕</button>
-        <p className="font-semibold text-base mb-1">Season dates</p>
-        <p className="text-xs mb-5" style={{ color: 'var(--color-text-muted)' }}>Set the start and end of your racing season.</p>
-        <div className="space-y-4">
-          <div>
-            <p className="section-title mb-1.5">Season start</p>
-            <input type="date" value={start} onChange={e => setStart(e.target.value)}
-              className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-              style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }} />
-          </div>
-          <div>
-            <p className="section-title mb-1.5">Season end</p>
-            <input type="date" value={end} onChange={e => setEnd(e.target.value)}
-              className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-              style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }} />
-          </div>
-        </div>
-        <div className="flex gap-2 mt-6">
+      <div className="w-full max-w-md rounded-2xl relative flex flex-col overflow-hidden"
+        style={{ backgroundColor: '#FFFFFF', boxShadow: '0 8px 40px rgba(15,31,28,0.16)', maxHeight: '90vh' }}>
+
+        {/* Header */}
+        <div className="px-6 pt-6 pb-4 shrink-0" style={{ borderBottom: 'var(--border)' }}>
           <button onClick={onClose}
-            className="flex-1 py-2 rounded-full text-sm font-medium"
-            style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text-muted)' }}>Cancel</button>
-          <button onClick={() => canSave && onSave({ start, end })}
-            className="flex-1 py-2 rounded-full text-sm font-semibold"
-            style={{ backgroundColor: canSave ? '#0A1628' : 'rgba(15,31,28,0.1)', color: canSave ? '#fff' : 'var(--color-text-muted)', cursor: canSave ? 'pointer' : 'not-allowed' }}>
-            Save
-          </button>
+            className="absolute top-5 right-5 w-7 h-7 rounded-full flex items-center justify-center text-sm"
+            style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}>✕</button>
+          {showBikeReg ? (
+            <>
+              <button onClick={() => { setShowBikeReg(false); setBrSearch(''); setBrType('All') }}
+                className="absolute top-5 left-5 w-7 h-7 rounded-full flex items-center justify-center text-sm"
+                style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text)' }}>←</button>
+              <div className="pl-8">
+                <div className="flex items-center gap-2">
+                  <p className="font-semibold text-base">Browse BikeReg</p>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                    style={{ backgroundColor: '#FF6B00', color: '#fff', letterSpacing: '0.02em' }}>BR</span>
+                </div>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Select events to add to your season</p>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="font-semibold text-base">Season</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Dates and events for your racing season</p>
+            </>
+          )}
         </div>
+
+        {/* BikeReg browser panel */}
+        {showBikeReg && (
+          <div className="flex-1 overflow-y-auto flex flex-col">
+            {/* Search + filter */}
+            <div className="px-4 pt-4 pb-3 shrink-0 space-y-3" style={{ borderBottom: 'var(--border)' }}>
+              <input
+                className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+                style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }}
+                placeholder="Search events or locations…"
+                value={brSearch} onChange={e => setBrSearch(e.target.value)}
+                autoFocus
+              />
+              <div className="flex gap-1.5 flex-wrap">
+                {brTypeOptions.map(t => (
+                  <button key={t} onClick={() => setBrType(t)}
+                    className="px-2.5 py-1 rounded-full text-xs font-medium transition-all"
+                    style={{ backgroundColor: brType === t ? '#0A1628' : 'rgba(15,31,28,0.06)', color: brType === t ? '#fff' : 'var(--color-text)' }}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Event list */}
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+              {filteredBR.length === 0 && (
+                <p className="text-xs text-center py-8" style={{ color: 'var(--color-text-muted)' }}>No events match your search.</p>
+              )}
+              {filteredBR.map(e => {
+                const isAdded   = addedNames.has(e.name.toLowerCase())
+                const isPending = pendingAddId === e.id
+                const d = new Date(e.date + 'T12:00:00')
+                const dateStr   = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                const statusColor = e.status === 'waitlist' ? '#F5A623' : '#00C896'
+                const statusLabel = e.status === 'waitlist' ? 'Waitlist' : 'Open'
+                return (
+                  <div key={e.id} className="rounded-xl px-3 py-3"
+                    style={{ border: isPending ? '1px solid #0A1628' : 'var(--border)', backgroundColor: '#FFFFFF', boxShadow: '0 1px 4px rgba(15,31,28,0.05)' }}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm leading-tight truncate" style={{ color: 'var(--color-text)' }}>{e.name}</p>
+                        <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>📍 {e.location}</p>
+                      </div>
+                      {isAdded ? (
+                        <span className="shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold"
+                          style={{ backgroundColor: 'rgba(0,200,150,0.1)', color: '#00C896' }}>✓ Added</span>
+                      ) : isPending ? (
+                        <button onClick={() => setPendingAddId(null)}
+                          className="shrink-0 text-xs"
+                          style={{ color: 'var(--color-text-muted)' }}>Cancel</button>
+                      ) : (
+                        <button onClick={() => { setPendingAddId(e.id); setPendingPri('B Race') }}
+                          className="shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold"
+                          style={{ backgroundColor: '#0A1628', color: '#fff' }}>+ Add</button>
+                      )}
+                    </div>
+
+                    {/* Priority picker — shown when pending */}
+                    {isPending && (
+                      <div className="mt-3 pt-3" style={{ borderTop: 'var(--border)' }}>
+                        <p className="text-[11px] mb-2" style={{ color: 'var(--color-text-muted)' }}>Priority for your season</p>
+                        <div className="flex gap-1.5 mb-3">
+                          {PRIORITIES.map(p => {
+                            const pc = p === 'A Race' ? '#FF2D78' : p === 'B Race' ? '#F5A623' : '#637068'
+                            const active = pendingPri === p
+                            return (
+                              <button key={p} onClick={() => setPendingPri(p)}
+                                className="flex-1 py-1.5 rounded-full text-xs font-semibold transition-all"
+                                style={{ backgroundColor: active ? pc : 'rgba(15,31,28,0.06)', color: active ? '#fff' : 'var(--color-text)' }}>
+                                {p}
+                              </button>
+                            )
+                          })}
+                        </div>
+                        <button onClick={() => {
+                          onAddRace({ name: e.name, date: e.date, location: e.location, eventType: e.eventType, priority: pendingPri, url: e.url, registered: false })
+                          setPendingAddId(null)
+                        }}
+                          className="w-full py-2 rounded-full text-sm font-semibold"
+                          style={{ backgroundColor: '#0A1628', color: '#fff' }}>
+                          Confirm
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                      <span className="data-value text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{dateStr}</span>
+                      <span style={{ color: 'var(--color-text-muted)', fontSize: 10 }}>·</span>
+                      <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{e.eventType}</span>
+                      <span style={{ color: 'var(--color-text-muted)', fontSize: 10 }}>·</span>
+                      <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{e.distance}</span>
+                      <span style={{ color: 'var(--color-text-muted)', fontSize: 10 }}>·</span>
+                      <span className="text-[10px] font-medium" style={{ color: statusColor }}>{statusLabel}</span>
+                      <span style={{ color: 'var(--color-text-muted)', fontSize: 10 }}>·</span>
+                      <span className="data-value text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{e.fee}</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Scrollable body */}
+        {!showBikeReg && <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+
+          {/* Season dates */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <p className="section-title">Season window</p>
+              {!editingDates && start && end && (
+                <button onClick={() => setEditingDates(true)}
+                  className="text-[11px] font-medium"
+                  style={{ color: 'var(--color-accent)' }}>Edit</button>
+              )}
+            </div>
+            {!editingDates && start && end ? (
+              <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl"
+                style={{ backgroundColor: 'rgba(15,31,28,0.03)', border: 'var(--border)' }}>
+                <span className="data-value text-sm">{new Date(start + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>→</span>
+                <span className="data-value text-sm">{new Date(end + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+              </div>
+            ) : (
+              <>
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <p className="text-[11px] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>Start</p>
+                    <input type="date" value={start}
+                      onChange={e => setStart(e.target.value)}
+                      className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+                      style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }} />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-[11px] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>End</p>
+                    <input type="date" value={end}
+                      onChange={e => setEnd(e.target.value)}
+                      className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+                      style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }} />
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-2.5">
+                  {season?.start && season?.end && (
+                    <button onClick={() => { setStart(season.start); setEnd(season.end); setEditingDates(false) }}
+                      className="flex-1 py-2 rounded-full text-sm font-semibold"
+                      style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}>Cancel</button>
+                  )}
+                  <button onClick={handleSaveDates}
+                    className="flex-1 py-2 rounded-full text-sm font-semibold"
+                    style={{ backgroundColor: canSaveDates ? '#0A1628' : 'rgba(15,31,28,0.1)', color: canSaveDates ? '#fff' : 'var(--color-text-muted)', cursor: canSaveDates ? 'pointer' : 'not-allowed' }}>
+                    Save dates
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Events list */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <p className="section-title">Events &amp; Races</p>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setShowBikeReg(true)}
+                  className="text-[11px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1"
+                  style={{ backgroundColor: 'rgba(255,107,0,0.08)', color: '#FF6B00' }}>
+                  <span className="text-[9px] font-bold px-1 py-px rounded" style={{ backgroundColor: '#FF6B00', color: '#fff' }}>BR</span>
+                  Browse
+                </button>
+                {!adding && (
+                  <button onClick={() => setAdding(true)}
+                    className="text-[11px] font-semibold px-2.5 py-1 rounded-full"
+                    style={{ backgroundColor: 'rgba(255,45,120,0.08)', color: '#FF2D78' }}>
+                    + Add
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {sortedRaces.length === 0 && !adding && (
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>No events yet. Add your first race above.</p>
+            )}
+
+            <div className="space-y-3">
+              {sortedRaces.map(r => {
+                const priColor = r.priority === 'A Race' ? '#FF2D78' : r.priority === 'B Race' ? '#F5A623' : '#637068'
+                const priBg    = r.priority === 'A Race' ? 'rgba(255,45,120,0.08)' : r.priority === 'B Race' ? 'rgba(245,166,35,0.10)' : 'rgba(99,112,104,0.08)'
+                const d        = new Date(r.date + 'T12:00:00')
+                const today    = new Date(localToday())
+                const days     = Math.ceil((d - today) / 86400000)
+                const dateLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+                const countdown = days < 0 ? { text: 'Past', color: 'var(--color-text-muted)' }
+                  : days === 0 ? { text: 'Today', color: '#FF2D78' }
+                  : days <= 14 ? { text: `${days}d away`, color: '#E85555' }
+                  : days <= 60 ? { text: `${days}d away`, color: '#F5A623' }
+                  : { text: `${days}d away`, color: 'var(--color-text-muted)' }
+                return (
+                  <div key={r.id} className="rounded-2xl overflow-hidden"
+                    style={{ border: 'var(--border)', backgroundColor: '#FFFFFF', boxShadow: '0 2px 8px rgba(15,31,28,0.08), 0 1px 3px rgba(15,31,28,0.06)' }}>
+                    <div className="px-4 py-3">
+                      {/* Name row */}
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <p className="font-semibold text-sm leading-tight" style={{ color: 'var(--color-text)' }}>{r.name}</p>
+                        <button onClick={() => onRemoveRace(r.id)}
+                          className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-xs mt-0.5"
+                          style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}>✕</button>
+                      </div>
+                      {/* Chips row */}
+                      <div className="flex items-center gap-1.5 flex-wrap mb-2.5">
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                          style={{ backgroundColor: priBg, color: priColor }}>
+                          {r.priority ?? 'Unrated'}
+                        </span>
+                        {r.eventType && (
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+                            style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text-muted)' }}>
+                            {r.eventType}
+                          </span>
+                        )}
+                        {r.location && (
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+                            style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text-muted)' }}>
+                            📍 {r.location}
+                          </span>
+                        )}
+                      </div>
+                      {/* Date + countdown */}
+                      <div className="flex items-center justify-between mb-2.5">
+                        <span className="data-value text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{dateLabel}</span>
+                        <span className="data-value text-[11px] font-semibold" style={{ color: countdown.color }}>{countdown.text}</span>
+                      </div>
+                      {/* Registration row */}
+                      <div className="flex items-center justify-between pt-2.5" style={{ borderTop: 'var(--border)' }}>
+                        <button
+                          onClick={() => onUpdateRace({ id: r.id, registered: !r.registered })}
+                          className="flex items-center gap-1.5 text-[11px] font-medium rounded-full px-2.5 py-1 transition-all"
+                          style={{
+                            backgroundColor: r.registered ? 'rgba(0,200,150,0.1)' : 'rgba(15,31,28,0.05)',
+                            color: r.registered ? '#00C896' : 'var(--color-text-muted)',
+                          }}>
+                          <span>{r.registered ? '✓' : '○'}</span>
+                          <span>{r.registered ? 'Registered' : 'Not registered'}</span>
+                        </button>
+                        {r.url && !r.registered && (
+                          <a href={r.url} target="_blank" rel="noopener noreferrer"
+                            className="text-[11px] font-semibold"
+                            style={{ color: '#FF6B00' }}>
+                            Register on BikeReg →
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Inline add form */}
+            {adding && (
+              <div className="mt-3 rounded-xl p-4 space-y-3" style={{ backgroundColor: 'rgba(15,31,28,0.03)', border: 'var(--border)' }}>
+                <p className="text-xs font-semibold" style={{ color: 'var(--color-text)' }}>New event</p>
+                <input
+                  className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+                  style={{ border: 'var(--border)', backgroundColor: '#FFFFFF' }}
+                  placeholder="Event name (e.g. Tour of Somerville)"
+                  value={evtName} onChange={e => setEvtName(e.target.value)}
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <p className="text-[11px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Date</p>
+                    <input type="date" value={evtDate} onChange={e => setEvtDate(e.target.value)}
+                      className="w-full rounded-xl px-3 py-2 text-sm outline-none"
+                      style={{ border: 'var(--border)', backgroundColor: '#FFFFFF' }} />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-[11px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Location</p>
+                    <input
+                      className="w-full rounded-xl px-3 py-2 text-sm outline-none"
+                      style={{ border: 'var(--border)', backgroundColor: '#FFFFFF' }}
+                      placeholder="City, State"
+                      value={evtLoc} onChange={e => setEvtLoc(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[11px] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>Type</p>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {EVENT_TYPES.map(t => (
+                      <button key={t} onClick={() => setEvtType(t)}
+                        className="px-2.5 py-1 rounded-full text-xs font-medium transition-all"
+                        style={{ backgroundColor: evtType === t ? '#0A1628' : 'rgba(15,31,28,0.06)', color: evtType === t ? '#fff' : 'var(--color-text)' }}>
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[11px] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>Priority</p>
+                  <div className="flex gap-1.5">
+                    {PRIORITIES.map(p => (
+                      <button key={p} onClick={() => setEvtPri(p)}
+                        className="flex-1 py-1.5 rounded-full text-xs font-semibold transition-all"
+                        style={{ backgroundColor: evtPri === p ? '#FF2D78' : 'rgba(15,31,28,0.06)', color: evtPri === p ? '#fff' : 'var(--color-text)' }}>
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button onClick={() => setAdding(false)}
+                    className="flex-1 py-2 rounded-full text-sm font-medium"
+                    style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text-muted)' }}>Cancel</button>
+                  <button onClick={handleAddEvent}
+                    className="flex-1 py-2 rounded-full text-sm font-semibold"
+                    style={{ backgroundColor: '#FF2D78', color: '#fff', opacity: canAddEvt ? 1 : 0.4, cursor: canAddEvt ? 'pointer' : 'not-allowed' }}>
+                    Add event
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>}
+
+        {/* Footer */}
+        {!showBikeReg && (
+          <div className="px-6 py-4 shrink-0" style={{ borderTop: 'var(--border)' }}>
+            <button onClick={onClose}
+              className="w-full py-2.5 rounded-full text-sm font-semibold"
+              style={{ backgroundColor: '#0A1628', color: '#fff' }}>
+              Done
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -604,11 +1021,11 @@ function MiniTimeline({ wake, bed, blocks, windows, dark = false }) {
          :                       'rgba(255,255,255,0.07)',     // filler
   })) : rawSegs
 
-  const labelSegs = segs.filter(s => s.kind === 'gap' && s.label && (s.end - s.start) / span >= 0.07)
+  const labelSegs = segs.filter(s => s.kind === 'gap' && s.label)
   const [hoveredIdx, setHoveredIdx] = useState(null)
 
-  const labelColor     = dark ? 'rgba(0,200,150,0.90)' : '#004d35'
-  const subLabelColor  = dark ? 'rgba(0,200,150,0.60)' : '#006644'
+  const labelColor     = dark ? 'rgba(255,255,255,0.90)' : '#004d35'
+  const subLabelColor  = dark ? 'rgba(255,255,255,0.60)' : '#006644'
   const timeLabelColor = dark ? 'rgba(255,255,255,0.30)' : 'rgba(15,31,28,0.30)'
 
   return (
@@ -623,8 +1040,8 @@ function MiniTimeline({ wake, bed, blocks, windows, dark = false }) {
           ))}
         </div>
 
-        {/* Layer 2 — gap labels, also clipped */}
-        <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
+        {/* Layer 2 — gap labels, overflow visible so narrow segments still show full text */}
+        <div className="absolute inset-0 pointer-events-none" style={{ overflow: 'visible' }}>
           {labelSegs.map((s, i) => {
             const centerPct = ((s.start + s.end) / 2 - wD) / span * 100
             return (
@@ -946,8 +1363,8 @@ function ModifierRow({ label, options, value, onChange }) {
   )
 }
 
-function DailyReadiness({ seasonData, onSetupSeason }) {
-  const [planDate, setPlanDate] = useState(new Date().toISOString().slice(0, 10))
+function DailyReadiness({ seasonData, onSetupSeason, blocks, setBlocks }) {
+  const [planDate, setPlanDate] = useState(localToday())
   const planDateObj = new Date(planDate + 'T12:00:00')
   const dayName = planDateObj.toLocaleDateString('en-US', { weekday: 'long' })
   const dateStr = planDateObj.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
@@ -955,11 +1372,7 @@ function DailyReadiness({ seasonData, onSetupSeason }) {
   // Wake is auto-set from Whoop — read-only
   const wake = WHOOP_DATA.wakeTime
 
-  const [bed,     setBed]     = useState('21:30')
-  const [blocks,  setBlocks]  = useState([
-    { id: 1, type: 'work',   label: 'Work',   start: '08:00', end: '17:00' },
-    { id: 2, type: 'family', label: 'Family', start: '19:00', end: '20:30' },
-  ])
+  const [bed, setBed] = useState('21:30')
   const [addForm,    setAddForm]    = useState({ ...BLOCK_DEFAULTS })
   const [editingId,  setEditingId]  = useState(null)
   const [editForm,   setEditForm]   = useState({})
@@ -1462,10 +1875,10 @@ function AlertCard() {
   )
 }
 
-function OverviewTab({ seasonData, onSetupSeason }) {
+function OverviewTab({ seasonData, onSetupSeason, todayBlocks, setTodayBlocks }) {
   return (
     <div className="space-y-4">
-      <DailyReadiness seasonData={seasonData} onSetupSeason={onSetupSeason} />
+      <DailyReadiness seasonData={seasonData} onSetupSeason={onSetupSeason} blocks={todayBlocks} setBlocks={setTodayBlocks} />
       <AlertCard />
     </div>
   )

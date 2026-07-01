@@ -35,7 +35,10 @@
       "Bash(git -C /Users/nickolsen/cadenceiq add src/sections/athlete/AthleteSection.jsx)",
       "Bash(git -C /Users/nickolsen/cadenceiq commit -m ' *)",
       "Bash(git -C /Users/nickolsen/cadenceiq add .claude/settings.local.json)",
-      "Bash(git -C /Users/nickolsen/cadenceiq diff)"
+      "Bash(git -C /Users/nickolsen/cadenceiq diff)",
+      "Bash(brew list *)",
+      "Bash(node_modules/.bin/vite build *)",
+      "Bash(pkill -f \"vite\")"
     ]
   }
 }

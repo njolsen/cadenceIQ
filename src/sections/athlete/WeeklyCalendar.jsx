@@ -1,7 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
 import { SeasonArc } from './AthleteSection'
 
-const TODAY = new Date().toISOString().slice(0, 10)
+function localIso(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+const TODAY = localIso()
 
 // ─── Training plan data ───────────────────────────────────────────────────────
 // Full June 2026 training plan — keyed by ISO date string
@@ -104,7 +107,7 @@ const WO_ZONES = ['Z1','Z2','Z3','Z3–4','Z4','Z4–5','Z5']
 
 // ─── Today's workout recommendation ──────────────────────────────────────────
 
-function TodayRecommendation({ readinessScore, activityByDate, userWorkouts, athleteFtp, seasonData }) {
+function TodayRecommendation({ readinessScore, activityByDate, userWorkouts, athleteFtp, seasonData, scheduleBlocks = [] }) {
   const d = new Date(TODAY + 'T12:00:00')
   d.setDate(d.getDate() - 1)
   const yesterdayStr = isoDate(d)
@@ -195,50 +198,68 @@ function TodayRecommendation({ readinessScore, activityByDate, userWorkouts, ath
           color: '#00C896' }
   }
 
+  // Compute largest free training window from today's schedule blocks
+  if (scheduleBlocks.length > 0 && rec.type !== 'Race day' && rec.type !== 'Race openers') {
+    const tD = s => { const [h, m] = (s || '00:00').split(':').map(Number); return h + m / 60 }
+    const wakeH = tD('05:32'), bedH = tD('21:30')
+    const busy = scheduleBlocks
+      .map(b => ({ start: tD(b.start), end: tD(b.end) }))
+      .filter(b => b.end > b.start)
+      .sort((a, z) => a.start - z.start)
+    let cur = wakeH, bestGap = 0
+    for (const blk of busy) {
+      if (blk.start > cur + 0.25) bestGap = Math.max(bestGap, blk.start - cur)
+      cur = Math.max(cur, blk.end)
+    }
+    if (bedH > cur + 0.25) bestGap = Math.max(bestGap, bedH - cur)
+    const avail = bestGap
+    if (avail < 0.75 && rec.type !== 'Rest day') {
+      rec = { type: 'No time today', duration: null, zone: null, color: 'var(--color-text-muted)',
+        rationale: `Only ${Math.round(avail * 60)} min gap in today's schedule. Log it as a rest day.` }
+    } else if (avail < 1.25 && !['Rest day', 'No time today', 'Easy spin · 45–60 min'].includes(rec.type)) {
+      rec = { ...rec, duration: '45–60 min', zone: 'Z1–Z2',
+        rationale: `${rec.rationale} Schedule only allows ~${avail.toFixed(1)}h today.` }
+    } else if (avail < 2 && rec.duration && (rec.duration.includes('2h') || rec.duration.includes('3h'))) {
+      rec = { ...rec, duration: `${Math.floor(avail)}h ${Math.round((avail % 1) * 60)}m max`,
+        rationale: `${rec.rationale} Capped to your ${avail.toFixed(1)}h window today.` }
+    }
+  }
+
   const rColor = readinessScore >= 75 ? '#00C896' : readinessScore >= 50 ? '#F5A623' : '#E85555'
   const rBg    = readinessScore >= 75 ? 'rgba(0,200,150,0.10)' : readinessScore >= 50 ? 'rgba(245,166,35,0.10)' : 'rgba(232,85,85,0.10)'
 
   return (
-    <div className="px-6 py-4" style={{ borderBottom: 'var(--border)' }}>
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2.5">
-          <span className="section-title">Today's Recommendation</span>
-          <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
-            Yesterday: {yesterdayLabel}
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>Readiness</span>
-          <span className="data-value text-xs font-bold px-2 py-0.5 rounded-full"
-            style={{ backgroundColor: rBg, color: rColor }}>
-            {readinessScore}
-          </span>
-        </div>
+    <div className="flex items-center gap-4 w-full min-w-0">
+
+      {/* Yesterday */}
+      <div className="flex items-center gap-2 shrink-0">
+        <span className="text-[9px] font-medium uppercase tracking-widest"
+          style={{ color: 'rgba(15,31,28,0.28)' }}>Yesterday</span>
+        <span className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>{yesterdayLabel}</span>
       </div>
-      <div className="flex items-start gap-3 rounded-xl px-4 py-3"
-        style={{ backgroundColor: `${rec.color}12`, border: `0.5px solid ${rec.color}40` }}>
-        <span className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: rec.color }} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className="text-sm font-semibold">{rec.type}</span>
-            {rec.duration && (
-              <span className="data-value text-xs" style={{ color: 'var(--color-text-muted)' }}>{rec.duration}</span>
-            )}
-            {rec.zone && (
-              <span className="data-value text-[11px] font-medium px-1.5 py-0.5 rounded-md"
-                style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}>
-                {rec.zone}
-              </span>
-            )}
-            {rec.watts && (
-              <span className="data-value text-xs font-semibold" style={{ color: rec.color }}>
-                {rec.watts.lo}–{rec.watts.hi}W
-              </span>
-            )}
-          </div>
-          <p className="text-xs leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>{rec.rationale}</p>
-        </div>
+
+      {/* Thin vertical rule */}
+      <div className="shrink-0 w-px h-3.5 rounded-full" style={{ backgroundColor: 'rgba(15,31,28,0.13)' }} />
+
+      {/* Today */}
+      <div className="flex items-center gap-2.5 flex-1 min-w-0">
+        <span className="text-[9px] font-medium uppercase tracking-widest shrink-0"
+          style={{ color: 'rgba(15,31,28,0.28)' }}>Today</span>
+        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: rec.color }} />
+        <span className="text-sm font-semibold shrink-0" style={{ color: 'var(--color-text)' }}>{rec.type}</span>
+        {rec.duration && (
+          <span className="data-value text-xs shrink-0" style={{ color: 'var(--color-text-muted)' }}>{rec.duration}</span>
+        )}
+        {rec.zone && (
+          <span className="data-value text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0"
+            style={{ backgroundColor: `${rec.color}13`, color: rec.color }}>{rec.zone}</span>
+        )}
       </div>
+
+      {/* Readiness ring — no label, the circle is self-evident */}
+      <span className="data-value text-[11px] font-bold w-6 h-6 rounded-full flex items-center justify-center shrink-0"
+        style={{ backgroundColor: rBg, color: rColor }}>{readinessScore}</span>
+
     </div>
   )
 }
@@ -273,6 +294,7 @@ export default function WeeklyCalendar({
   readinessScore = 78,
   onAddCalendarEvent,
   onRemoveCalendarEvent,
+  scheduleBlocks = [],
 }) {
   const [currentMonth, setCurrentMonth] = useState({ year: 2026, month: 5 }) // June 2026
   const [showModal, setShowModal]   = useState(false)
@@ -314,6 +336,46 @@ export default function WeeklyCalendar({
   }
 
   const allEvents = [...LIFE_EVENTS, ...pendingEvents]
+
+  // ── Scroll state (lifted from MonthView) ───────────────────────────────────
+  const scrollRef    = useRef(null)
+  const dividerRefs  = useRef({})
+  const todayRowRef  = useRef(null)
+  const [displayYear,  setDisplayYear]  = useState(currentMonth.year)
+  const [displayMonth, setDisplayMonth] = useState(currentMonth.month)
+
+  const getRelativeTop = el => {
+    const scroller = scrollRef.current
+    return scroller.scrollTop + el.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+  }
+
+  useEffect(() => {
+    const el = todayRowRef.current
+    if (el && scrollRef.current) scrollRef.current.scrollTop = getRelativeTop(el) - 8
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const root = scrollRef.current
+    if (!root) return
+    const obs = new IntersectionObserver(
+      entries => entries.forEach(e => {
+        if (e.isIntersecting) {
+          const [y, m] = e.target.dataset.monthKey.split('-').map(Number)
+          setDisplayYear(y); setDisplayMonth(m)
+        }
+      }),
+      { root, threshold: 0, rootMargin: '0px 0px -88% 0px' }
+    )
+    Object.values(dividerRefs.current).forEach(el => el && obs.observe(el))
+    return () => obs.disconnect()
+  }, [])
+
+  const jumpMonth = dir => {
+    const idx  = MONTHS_RANGE.findIndex(r => r.year === displayYear && r.month === displayMonth)
+    const next = MONTHS_RANGE[Math.max(0, Math.min(MONTHS_RANGE.length - 1, idx + dir))]
+    const el   = dividerRefs.current[next.key]
+    if (el && scrollRef.current) scrollRef.current.scrollTo({ top: getRelativeTop(el) - 4, behavior: 'smooth' })
+  }
 
   function fmtSecs(s) {
     const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60)
@@ -362,31 +424,55 @@ export default function WeeklyCalendar({
   }
 
   return (
-    <div className="card overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden rounded-2xl"
+      style={{ backgroundColor: '#FFFFFF', border: 'var(--border)', boxShadow: '0 1px 6px rgba(15,31,28,0.07)' }}>
 
-      {/* ── Calendar header ── */}
-      <div className="px-6 pt-5 pb-4" style={{ borderBottom: 'var(--border)' }}>
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="font-semibold text-lg">Training & Racing Calendar</h2>
+      {/* ── FROZEN: everything above the day grid ── */}
+      <div className="shrink-0">
+
+        {/* Yesterday → Today recommendation */}
+        <div className="px-4 py-2.5" style={{ borderBottom: 'var(--border)' }}>
+          <TodayRecommendation
+            readinessScore={readinessScore}
+            activityByDate={activityByDate}
+            userWorkouts={userWorkouts}
+            athleteFtp={athleteFtp}
+            seasonData={seasonData}
+            scheduleBlocks={scheduleBlocks}
+          />
+        </div>
+
+        {/* Month nav — centered */}
+        <div className="flex items-center justify-center gap-2 py-1.5" style={{ borderBottom: 'var(--border)' }}>
+          <button onClick={() => jumpMonth(-1)}
+            className="w-6 h-6 rounded-full flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}>‹</button>
+          <p className="font-semibold text-sm w-28 text-center">{MONTH_NAMES[displayMonth]} {displayYear}</p>
+          <button onClick={() => jumpMonth(1)}
+            className="w-6 h-6 rounded-full flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}>›</button>
+        </div>
+
+        {/* Day-of-week headers */}
+        <div className="flex items-stretch" style={{ borderBottom: '1px solid rgba(15,31,28,0.20)' }}>
+          <div className="grid flex-1" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
+            {DAY_NAMES.map(d => (
+              <div key={d} className="text-center text-xs font-semibold uppercase tracking-wide py-2"
+                style={{ color: 'var(--color-text-muted)', borderRight: '1px solid rgba(15,31,28,0.20)' }}>{d}</div>
+            ))}
+          </div>
+          <div className="text-center text-xs font-semibold uppercase tracking-wide py-2 flex items-center justify-center"
+            style={{ width: 112, color: 'var(--color-text-muted)', backgroundColor: 'rgba(15,31,28,0.09)' }}>
+            Total
           </div>
         </div>
       </div>
 
-      {/* ── Today's workout recommendation ── */}
-      <TodayRecommendation
-        readinessScore={readinessScore}
-        activityByDate={activityByDate}
-        userWorkouts={userWorkouts}
-        athleteFtp={athleteFtp}
-        seasonData={seasonData}
-      />
-
-      {/* ── Month view ── */}
-      <div className="p-4">
+      {/* ── SCROLLABLE: month grids ── */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <MonthView
-          year={currentMonth.year}
-          month={currentMonth.month}
+          dividerRefs={dividerRefs}
+          todayRowRef={todayRowRef}
           allEvents={allEvents}
           seasonData={seasonData}
           onDaySelect={handleDaySelect}
@@ -400,6 +486,7 @@ export default function WeeklyCalendar({
           getDaySummary={getDaySummary}
           userWorkouts={userWorkouts}
           sessionOverrides={sessionOverrides}
+          scheduleBlocks={scheduleBlocks}
         />
       </div>
 
@@ -544,13 +631,10 @@ const MONTHS_RANGE = (() => {
 
 // ─── Month view (continuous scroll) ──────────────────────────────────────────
 
-function MonthView({ year, month, allEvents, seasonData, onDaySelect, onDayAdd, onDaySelectItem, onRemoveItem, onCopyItem, onSkipSession, onPasteToDay, getDaySummary, userWorkouts, sessionOverrides, copiedItem }) {
+// MonthView renders only the scrollable grid content — nav/headers live in WeeklyCalendar
+function MonthView({ dividerRefs, todayRowRef, allEvents, seasonData, onDaySelect, onDayAdd, onDaySelectItem, onRemoveItem, onCopyItem, onSkipSession, onPasteToDay, getDaySummary, userWorkouts, sessionOverrides, copiedItem, scheduleBlocks = [] }) {
   const today = TODAY
   const races = seasonData?.races ?? []
-  const [displayYear, setDisplayYear] = useState(year)
-  const [displayMonth, setDisplayMonth] = useState(month)
-  const scrollRef = useRef(null)
-  const dividerRefs = useRef({})
   const [contextMenu, setContextMenu] = useState(null)
 
   useEffect(() => {
@@ -560,142 +644,87 @@ function MonthView({ year, month, allEvents, seasonData, onDaySelect, onDayAdd, 
     return () => document.removeEventListener('click', close)
   }, [contextMenu])
 
-  // Helper: absolute position of el within the scroll container
-  const getRelativeTop = (el) => {
-    const scroller = scrollRef.current
-    const scrollerRect = scroller.getBoundingClientRect()
-    const elRect = el.getBoundingClientRect()
-    return scroller.scrollTop + elRect.top - scrollerRect.top
-  }
-
-  // Scroll to current month on mount
-  useEffect(() => {
-    const key = `${year}-${month}`
-    const el = dividerRefs.current[key]
-    if (el && scrollRef.current) {
-      scrollRef.current.scrollTop = getRelativeTop(el) - 4
+  // Generate all complete Mon–Sun weeks covering the full MONTHS_RANGE
+  const allWeeks = (() => {
+    const first = MONTHS_RANGE[0]
+    const last  = MONTHS_RANGE[MONTHS_RANGE.length - 1]
+    const start = new Date(first.year, first.month, 1)
+    // rewind to the Monday of that week
+    start.setDate(start.getDate() - ((start.getDay() + 6) % 7))
+    const end = new Date(last.year, last.month + 1, 0) // last day of last month
+    const weeks = []
+    const cur = new Date(start)
+    while (cur <= end) {
+      const week = []
+      for (let i = 0; i < 7; i++) { week.push(new Date(cur)); cur.setDate(cur.getDate() + 1) }
+      weeks.push(week)
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Update header month as user scrolls
-  useEffect(() => {
-    const root = scrollRef.current
-    if (!root) return
-    const observer = new IntersectionObserver(
-      entries => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            const [y, m] = entry.target.dataset.monthKey.split('-').map(Number)
-            setDisplayYear(y)
-            setDisplayMonth(m)
-          }
-        })
-      },
-      { root, threshold: 0, rootMargin: '0px 0px -88% 0px' }
-    )
-    Object.values(dividerRefs.current).forEach(el => el && observer.observe(el))
-    return () => observer.disconnect()
-  }, [])
-
-  const jumpMonth = (dir) => {
-    const idx = MONTHS_RANGE.findIndex(r => r.year === displayYear && r.month === displayMonth)
-    const next = MONTHS_RANGE[Math.max(0, Math.min(MONTHS_RANGE.length - 1, idx + dir))]
-    const el = dividerRefs.current[next.key]
-    if (el && scrollRef.current) {
-      scrollRef.current.scrollTo({ top: getRelativeTop(el) - 4, behavior: 'smooth' })
-    }
-  }
+    return weeks
+  })()
 
   return (
     <div>
-      {/* Month nav — updates as you scroll */}
-      <div className="flex items-center justify-between mb-3 pb-3" style={{ borderBottom: 'var(--border)' }}>
-        <button onClick={() => jumpMonth(-1)}
-          className="w-8 h-8 rounded-full flex items-center justify-center transition-colors"
-          style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}>‹</button>
-        <p className="font-semibold text-base">{MONTH_NAMES[displayMonth]} {displayYear}</p>
-        <button onClick={() => jumpMonth(1)}
-          className="w-8 h-8 rounded-full flex items-center justify-center transition-colors"
-          style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}>›</button>
-      </div>
+        {allWeeks.map((weekDays, wi) => {
+          // Month labels: insert above any week that contains a 1st-of-month
+          const monthStarts = weekDays.filter(d => d.getDate() === 1)
 
-      {/* Day-of-week labels */}
-      <div className="grid gap-1.5 mb-2" style={{ gridTemplateColumns: 'repeat(7, 1fr) 112px' }}>
-        {DAY_NAMES.map(d => (
-          <div key={d} className="text-center text-xs font-semibold uppercase tracking-wide py-1.5" style={{ color: 'var(--color-text-muted)' }}>
-            {d}
-          </div>
-        ))}
-        <div className="text-center text-xs font-semibold uppercase tracking-wide py-1.5" style={{ color: 'var(--color-text-muted)' }}>Total</div>
-      </div>
+          const userBikeMins = weekDays.reduce((s, d) => {
+            const wos = userWorkouts[isoDate(d)] ?? []
+            return s + wos.filter(w => w.type === 'bike').reduce((t, w) => t + (w.totalMin ?? 0), 0)
+          }, 0)
+          const userWorkoutTSS = weekDays.reduce((s, d) => {
+            const wos = userWorkouts[isoDate(d)] ?? []
+            return s + wos.reduce((t, w) => t + (w.tss ?? 0), 0)
+          }, 0)
+          const planTSS  = weekDays.reduce((s, d) => { const ses = TRAINING_PLAN[isoDate(d)]; return s + (ses?.tss ?? 0) }, 0) + userWorkoutTSS
+          const planSecs = userBikeMins > 0 ? userBikeMins * 60 : weekDays.reduce((s, d) => { const ses = TRAINING_PLAN[isoDate(d)]; return s + (ses ? parsePlanSecs(ses.duration) : 0) }, 0)
+          const actTSS   = weekDays.reduce((s, d) => { const a = getDaySummary(isoDate(d)); return s + (a?.totalTSS ?? 0) }, 0)
+          const stravaActSecs = weekDays.reduce((s, d) => { const a = getDaySummary(isoDate(d)); return s + (a ? parsePlanSecs(a.totalDuration) : 0) }, 0)
+          const actSecs  = stravaActSecs > 0 ? stravaActSecs : userBikeMins * 60
+          const actMiles = weekDays.reduce((s, d) => { const a = getDaySummary(isoDate(d)); return s + parseFloat(a?.totalDist ?? 0) }, 0)
 
-      {/* Scrollable continuous months */}
-      <div ref={scrollRef} className="overflow-y-auto" style={{ maxHeight: '700px' }}>
-        {MONTHS_RANGE.map(({ year: y, month: m, key }) => {
-          const days  = getMonthDays(y, m)
-          const weeks = Array.from({ length: Math.ceil(days.length / 7) }, (_, i) => days.slice(i * 7, i * 7 + 7))
+          const isThisWeek = weekDays.some(d => isoDate(d) === today)
+          // Primary month = month of Wednesday (middle of week)
+          const primaryMonth = weekDays[2].getMonth()
+          const primaryYear  = weekDays[2].getFullYear()
+
           return (
-            <div key={key} className="mb-6">
-              {/* Month divider — observed for header update */}
-              <div
-                ref={el => { dividerRefs.current[key] = el }}
-                data-month-key={key}
-                className="flex items-center gap-3 py-2 mb-2"
-              >
-                <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>
-                  {MONTH_NAMES[m]} {y}
-                </span>
-                <div className="flex-1 h-px" style={{ backgroundColor: 'var(--color-border)' }} />
-              </div>
-
-              {/* Week rows */}
-              <div className="space-y-2">
-                {weeks.map((rowDays, wi) => {
-                  // Logged bike workouts from WorkoutBuilder (plan = what user built, no Strava needed)
-                  const userBikeMins = rowDays.reduce((s, d) => {
-                    if (!d) return s
-                    const wos = userWorkouts[isoDate(d)] ?? []
-                    return s + wos.filter(w => w.type === 'bike').reduce((t, w) => t + (w.totalMin ?? 0), 0)
-                  }, 0)
-                  const planTSS  = rowDays.reduce((s, d) => { if (!d) return s; const ses = TRAINING_PLAN[isoDate(d)]; return s + (ses?.tss ?? 0) }, 0)
-                  // Plan hours: prefer workout builder totalMin, fall back to TRAINING_PLAN duration
-                  const planSecs = userBikeMins > 0 ? userBikeMins * 60 : rowDays.reduce((s, d) => { if (!d) return s; const ses = TRAINING_PLAN[isoDate(d)]; return s + (ses ? parsePlanSecs(ses.duration) : 0) }, 0)
-                  const actTSS   = rowDays.reduce((s, d) => { if (!d) return s; const a = getDaySummary(isoDate(d)); return s + (a?.totalTSS ?? 0) }, 0)
-                  // Actual hours: Strava if available, else workout builder logged time
-                  const stravaActSecs = rowDays.reduce((s, d) => { if (!d) return s; const a = getDaySummary(isoDate(d)); return s + (a ? parsePlanSecs(a.totalDuration) : 0) }, 0)
-                  const actSecs  = stravaActSecs > 0 ? stravaActSecs : userBikeMins * 60
-                  const actMiles = rowDays.reduce((s, d) => { if (!d) return s; const a = getDaySummary(isoDate(d)); return s + parseFloat(a?.totalDist ?? 0) }, 0)
-
+            <div key={wi}>
+              {/* Invisible sentinels for IntersectionObserver — keeps ‹ Month Year › header in sync */}
+              {monthStarts.map(d => {
+                const my = d.getFullYear(), mm = d.getMonth(), key = `${my}-${mm}`
+                return <div key={key} ref={el => { dividerRefs.current[key] = el }} data-month-key={key} style={{ height: 0 }} />
+              })}
+              <div ref={isThisWeek ? todayRowRef : null} className="flex"
+                style={{ borderBottom: '1px solid rgba(15,31,28,0.20)', borderTop: wi === 0 ? '1px solid rgba(15,31,28,0.20)' : 'none' }}>
+                <div className="grid flex-1" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
+                {weekDays.map((date, i) => {
+                  const dateStr = isoDate(date)
+                  const session = TRAINING_PLAN[dateStr]
+                  const actDay  = getDaySummary(dateStr)
+                  const isToday = dateStr === today
+                  const race    = races.find(r => r.date === dateStr && !r.id)
+                  const displayIntensity = actDay ? actDay.primary.intensity : session?.intensity
+                  const dotColor = displayIntensity ? INTENSITY_COLOR[displayIntensity].bar : null
+                  const isSecondaryMonth = date.getMonth() !== primaryMonth || date.getFullYear() !== primaryYear
                   return (
-                    <div key={wi} className="grid gap-2" style={{ gridTemplateColumns: 'repeat(7, 1fr) 112px' }}>
-                      {Array.from({ length: 7 }, (_, i) => {
-                        const date = rowDays[i]
-                        if (!date) return <div key={i} />
-                        const dateStr = isoDate(date)
-                        const session = TRAINING_PLAN[dateStr]
-                        const actDay  = getDaySummary(dateStr)
-                        const isToday = dateStr === today
-                        // Only show race tile for hardcoded/pre-set races (no id); calendar-added events render via userWorkouts instead
-                        const race    = races.find(r => r.date === dateStr && !r.id)
-                        const displayIntensity = actDay ? actDay.primary.intensity : session?.intensity
-                        const dotColor = displayIntensity ? INTENSITY_COLOR[displayIntensity].bar : null
-                        return (
                           <button
                             key={dateStr}
                             onClick={() => copiedItem ? onPasteToDay(dateStr) : onDaySelect(dateStr)}
-                            className="relative flex flex-col rounded-2xl text-left transition-all overflow-hidden group"
+                            className="relative flex flex-col text-left transition-colors group"
                             style={{
-                              backgroundColor: copiedItem ? 'rgba(0,200,150,0.03)' : '#FFFFFF',
-                              border: copiedItem ? '1px dashed rgba(0,200,150,0.5)' : isToday ? '2px solid #FF2D78' : '1px solid #0A1628',
+                              backgroundColor: copiedItem ? 'rgba(0,200,150,0.05)' : isToday ? 'rgba(255,45,120,0.04)' : isSecondaryMonth ? 'rgba(15,31,28,0.025)' : '#FFFFFF',
+                              borderRight: '1px solid rgba(15,31,28,0.20)',
                               padding: '10px 10px 26px 10px',
-                              height: '170px',
+                              minHeight: '140px',
                               cursor: copiedItem ? 'copy' : 'pointer',
+                              overflow: 'hidden',
                             }}
                           >
                             {/* Date + tick */}
                             <div className="flex items-center justify-between w-full mb-1.5">
-                              <span className="data-value text-sm font-bold"
-                                style={{ color: isToday ? '#FF2D78' : 'var(--color-text-muted)' }}>
+                              <span className={`data-value text-sm font-bold${isToday ? ' w-6 h-6 rounded-full flex items-center justify-center text-white text-xs' : ''}`}
+                                style={{ backgroundColor: isToday ? '#FF2D78' : 'transparent', color: isToday ? '#FFFFFF' : 'var(--color-text-muted)' }}>
                                 {date.getDate()}
                               </span>
                               {actDay && !race && (
@@ -739,6 +768,21 @@ function MonthView({ year, month, allEvents, seasonData, onDaySelect, onDayAdd, 
                               </div>
                             )}
 
+                            {/* Today's schedule blocks (work/family/etc from Overview) */}
+                            {isToday && scheduleBlocks.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mb-1">
+                                {scheduleBlocks.map(blk => {
+                                  const blkColor = { work: '#1B6FD8', family: '#E86D2E', school: '#A78BFA', social: '#F5A623', commitment: '#94A3B8' }[blk.type] ?? '#637068'
+                                  return (
+                                    <span key={blk.id} className="text-[9px] font-medium px-1.5 py-0.5 rounded"
+                                      style={{ backgroundColor: `${blkColor}14`, color: blkColor }}>
+                                      {blk.label || blk.type}
+                                    </span>
+                                  )
+                                })}
+                              </div>
+                            )}
+
                             {/* User-added items — each in its own mini-box */}
                             {(userWorkouts[dateStr] ?? []).map((w, wi2) => {
                               const color = w.type === 'gym' ? '#A78BFA' : w.type === 'event' ? '#FF2D78' : '#00C896'
@@ -747,12 +791,17 @@ function MonthView({ year, month, allEvents, seasonData, onDaySelect, onDayAdd, 
                               const icon  = w.type === 'gym' ? '🏋️' : w.type === 'event' ? '🏁' : '🚴'
                               const label = w.name || (w.type === 'gym' ? 'Gym' : w.type === 'event' ? 'Event' : 'Ride')
                               return (
-                                <div key={wi2} className="rounded-lg px-2 py-1.5 mt-1 flex items-center gap-1.5 cursor-pointer"
+                                <div key={wi2} className="rounded-lg px-2 py-1.5 mt-1 cursor-pointer"
                                   style={{ backgroundColor: bg, border: `0.5px solid ${border}` }}
                                   onClick={e => { e.stopPropagation(); onDaySelectItem(dateStr, w.id) }}
                                   onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setContextMenu({ dateStr, itemId: w.id, item: w, label, x: e.clientX, y: e.clientY }) }}>
-                                  <span className="text-xs leading-none">{icon}</span>
-                                  <span className="text-xs font-medium truncate" style={{ color }}>{label}</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-xs leading-none">{icon}</span>
+                                    <span className="text-xs font-medium truncate" style={{ color }}>{label}</span>
+                                  </div>
+                                  {w.tss > 0 && (
+                                    <p className="data-value text-[10px] font-semibold mt-0.5" style={{ color }}>~{w.tss} TSS</p>
+                                  )}
                                 </div>
                               )
                             })}
@@ -771,9 +820,10 @@ function MonthView({ year, month, allEvents, seasonData, onDaySelect, onDayAdd, 
                           </button>
                         )
                       })}
+                      </div>
 
                       {/* Week total */}
-                      <div className="flex flex-col justify-center pl-3 gap-3">
+                      <div className="flex flex-col justify-center gap-3" style={{ width: 112, paddingLeft: 12, backgroundColor: 'rgba(15,31,28,0.09)' }}>
                         {(planTSS > 0 || actTSS > 0 || userBikeMins > 0) && (
                           <>
                             <div>
@@ -830,13 +880,9 @@ function MonthView({ year, month, allEvents, seasonData, onDaySelect, onDayAdd, 
                         )}
                       </div>
                     </div>
-                  )
-                })}
               </div>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
 
       {/* Right-click context menu */}
       {contextMenu && (
@@ -1453,14 +1499,25 @@ function GymForm({ onSave, onCancel }) {
 
 // ─── EventForm ────────────────────────────────────────────────────────────────
 
+const US_STATES = [
+  'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA',
+  'HI','ID','IL','IN','IA','KS','KY','LA','ME','MD',
+  'MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ',
+  'NM','NY','NC','ND','OH','OK','OR','PA','RI','SC',
+  'SD','TN','TX','UT','VT','VA','WA','WV','WI','WY',
+  'DC',
+]
+
 function EventForm({ onSave, onCancel }) {
-  const [name, setName]           = useState('')
-  const [location, setLocation]   = useState('')
+  const [name,      setName]      = useState('')
+  const [city,      setCity]      = useState('')
+  const [stateCode, setStateCode] = useState('')
   const [eventType, setEventType] = useState('Road Race')
-  const [priority, setPriority]   = useState('B Race')
+  const [priority,  setPriority]  = useState('B Race')
   const EVENT_TYPES = ['Crit', 'Road Race', 'Time Trial', 'Other']
   const PRIORITIES  = ['A Race', 'B Race', 'C Race']
   const canSubmit = name.trim().length > 0
+  const location  = [city.trim(), stateCode].filter(Boolean).join(', ')
   return (
     <div className="space-y-4">
       <p className="section-title">New Event</p>
@@ -1470,12 +1527,21 @@ function EventForm({ onSave, onCancel }) {
         placeholder="Event name (e.g. Tour of Somerville)"
         value={name} onChange={e => setName(e.target.value)}
       />
-      <input
-        className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-        style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }}
-        placeholder="Location (e.g. Somerville, NJ)"
-        value={location} onChange={e => setLocation(e.target.value)}
-      />
+      <div className="flex gap-2">
+        <input
+          className="flex-1 rounded-xl px-3 py-2.5 text-sm outline-none"
+          style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }}
+          placeholder="City"
+          value={city} onChange={e => setCity(e.target.value)}
+        />
+        <select
+          value={stateCode} onChange={e => setStateCode(e.target.value)}
+          className="rounded-xl px-3 py-2.5 text-sm outline-none"
+          style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)', color: stateCode ? '#1A2421' : '#637068', width: 80 }}>
+          <option value="">State</option>
+          {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
       <div>
         <p className="text-xs font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>Event Type</p>
         <div className="flex gap-2 flex-wrap">
@@ -1785,6 +1851,7 @@ const INTERVAL_TYPES = [
   { id: 'warmup',           label: 'Warmup',           desc: 'Gradual ramp from easy to target intensity' },
   { id: 'cooldown',         label: 'Cooldown',         desc: 'Progressive ease-down from working pace' },
   { id: 'recovery',         label: 'Recovery',         desc: 'Sustained easy effort — HR low throughout' },
+  { id: 'hard',             label: 'Hard',             desc: 'Single sustained hard effort block' },
   { id: 'hard_easy',        label: 'Hard-Easy',        desc: 'Alternating work and rest intervals' },
   { id: 'hard_harder_easy', label: 'Hard-Harder-Easy', desc: 'Escalating blocks — hard, harder, recovery' },
   { id: 'ramp_up',          label: 'Ramp Up',          desc: 'Step-wise intensity increases' },
@@ -1798,6 +1865,7 @@ const INTERVAL_DEFAULTS = {
   warmup:           15,
   cooldown:         10,
   recovery:         20,
+  hard:             10,
   hard_easy:        28,
   hard_harder_easy: 24,
   ramp_up:          20,
@@ -1808,6 +1876,7 @@ const INTERVAL_SHAPE = {
   warmup:           [{ dur: 1, v: 0.15 }, { dur: 1, v: 0.30 }, { dur: 1, v: 0.48 }, { dur: 1, v: 0.64 }, { dur: 1, v: 0.78 }],
   cooldown:         [{ dur: 1, v: 0.78 }, { dur: 1, v: 0.64 }, { dur: 1, v: 0.48 }, { dur: 1, v: 0.30 }, { dur: 1, v: 0.15 }],
   recovery:         [{ dur: 1, v: 0.22 }],
+  hard:             [{ dur: 1, v: 0.92 }],
   hard_easy:        [{ dur: 2, v: 0.88 }, { dur: 1.5, v: 0.28 }, { dur: 2, v: 0.88 }, { dur: 1.5, v: 0.28 }],
   hard_harder_easy: [{ dur: 1.5, v: 0.78 }, { dur: 1, v: 0.96 }, { dur: 1.5, v: 0.22 }],
   ramp_up:          [{ dur: 1, v: 0.35 }, { dur: 1, v: 0.52 }, { dur: 1, v: 0.70 }, { dur: 1, v: 0.88 }],
@@ -1815,12 +1884,85 @@ const INTERVAL_SHAPE = {
 }
 
 function zoneColor(v) {
-  if (v < 0.35) return '#00C896'
-  if (v < 0.55) return '#4CC9A0'
-  if (v < 0.70) return '#F5A623'
-  if (v < 0.83) return '#E8803A'
-  if (v < 0.93) return '#E85555'
-  return '#C93030'
+  if (v < 0.56) return '#9CA8A4'   // Z1 — grey
+  if (v < 0.76) return '#4A9EE8'   // Z2 — blue
+  if (v < 0.88) return '#22C55E'   // Z3 — green
+  if (v < 1.06) return '#F5A623'   // Z4 — yellow
+  return '#E85555'                  // Z5+ — red
+}
+
+function fmtDurShort(min) {
+  const totalSec = Math.round(min * 60)
+  const m = Math.floor(totalSec / 60), s = totalSec % 60
+  return s > 0 ? `${m}:${String(s).padStart(2, '0')}` : `${m}m`
+}
+
+function stepDur(val, dir, minVal = 0.25, maxVal = 30) {
+  const step = val < 2 ? 0.25 : val < 5 ? 0.5 : 1
+  return dir > 0 ? Math.min(maxVal, val + step) : Math.max(minVal, val - step)
+}
+
+function fmtDurHMS(min) {
+  const totalSec = Math.round((min ?? 0) * 60)
+  const h = Math.floor(totalSec / 3600)
+  const m = Math.floor((totalSec % 3600) / 60)
+  const s = totalSec % 60
+  return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+function parseDurInput(str, minVal, maxVal) {
+  const t = str.trim()
+  // H:MM:SS
+  const hmsMatch = t.match(/^(\d+):(\d{1,2}):(\d{1,2})$/)
+  if (hmsMatch) {
+    const h = parseInt(hmsMatch[1]), m = parseInt(hmsMatch[2]), s = parseInt(hmsMatch[3])
+    if (m >= 60 || s >= 60) return null
+    const res = h * 60 + m + s / 60
+    return Math.max(minVal, Math.min(maxVal, res))
+  }
+  // M:SS
+  const msMatch = t.match(/^(\d+):(\d{1,2})$/)
+  if (msMatch) {
+    const m = parseInt(msMatch[1]), s = parseInt(msMatch[2])
+    if (s >= 60) return null
+    const res = m + s / 60
+    return Math.max(minVal, Math.min(maxVal, res))
+  }
+  const num = parseFloat(t)
+  if (!isNaN(num) && num > 0) return Math.max(minVal, Math.min(maxVal, num))
+  return null
+}
+
+function DurInput({ val, onChange, minVal = 0.25, maxVal = 30 }) {
+  const displayKey = fmtDurShort(val ?? minVal)
+  const editDefault = fmtDurHMS(val ?? minVal)
+  return (
+    <div className="flex items-center gap-0.5">
+      <button onClick={() => onChange(stepDur(val ?? minVal, -1, minVal, maxVal))}
+        className="w-5 h-5 rounded-full flex items-center justify-center"
+        style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)', fontSize: 12 }}>−</button>
+      <input
+        key={displayKey}
+        type="text"
+        defaultValue={editDefault}
+        className="data-value text-xs font-semibold text-center"
+        style={{ width: '4.5rem', background: 'transparent', border: 'none', borderBottom: '1px solid rgba(15,31,28,0.15)', outline: 'none', color: 'var(--color-text)', padding: '0 2px' }}
+        onFocus={e => e.target.select()}
+        onBlur={e => {
+          const parsed = parseDurInput(e.target.value, minVal, maxVal)
+          if (parsed !== null) onChange(parsed)
+          else e.target.value = editDefault
+        }}
+        onKeyDown={e => {
+          if (e.key === 'Enter') { e.preventDefault(); e.target.blur() }
+          if (e.key === 'Escape') { e.target.value = editDefault; e.target.blur() }
+        }}
+      />
+      <button onClick={() => onChange(stepDur(val ?? minVal, 1, minVal, maxVal))}
+        className="w-5 h-5 rounded-full flex items-center justify-center"
+        style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text)', fontSize: 12 }}>+</button>
+    </div>
+  )
 }
 
 function DropGap({ index, dragOverIndex, setDragOverIndex, onDrop }) {
@@ -1850,9 +1992,10 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
 
   function fmtMin(min) {
     if (!min) return '0m'
-    const h = Math.floor(min / 60), m = min % 60
-    if (h === 0) return `${m}m`
-    return m ? `${h}h ${m}m` : `${h}h`
+    if (min < 1) return `${Math.round(min * 60)}s`
+    const h = Math.floor(min / 60), m = Math.floor(min % 60), s = Math.round((min % 1) * 60)
+    if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`
+    return s > 0 ? `${m}m ${s}s` : `${m}m`
   }
 
   // Returns shape segments for a block, using its live interval config
@@ -1916,6 +2059,7 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
       warmup:           { durationMin: 15, ftpPct: 60 },
       cooldown:         { durationMin: 10, ftpPct: 50 },
       recovery:         { durationMin: 20, ftpPct: 40 },
+      hard:             { durationMin: 10, ftpPct: 105 },
       hard_easy:        { sets: 4, workMin: 4, restMin: 2, workFtpPct: 95, restFtpPct: 55 },
       hard_harder_easy: { sets: 3, hardMin: 3, harderMin: 2, easyMin: 2, hardFtpPct: 85, harderFtpPct: 100, easyFtpPct: 50 },
       ramp_up:          { steps: 4, stepMin: 5, ftpLow: 35, ftpHigh: 88 },
@@ -1935,6 +2079,8 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
   // Preview: flatten all blocks into proportional segments
   const allPreviewSegs = blocks.flatMap(b => getBlockShape(b))
   const previewTotal   = allPreviewSegs.reduce((s, x) => s + x.dur, 0)
+  // Auto-TSS: TSS = sum of (durHours × IF² × 100) per segment, where IF = v (FTP fraction)
+  const autoTSS = Math.round(allPreviewSegs.reduce((s, seg) => s + (seg.dur / 60) * seg.v * seg.v * 100, 0))
   const PH = 52
 
   return (
@@ -2025,12 +2171,12 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
                 const MH    = 24
                 const isStructured = ['hard_easy','hard_harder_easy','ramp_up','ramp_down'].includes(block.type)
 
-                function Stepper({ val, onDec, onInc, suffix = 'm', minW = 'w-8' }) {
+                function Stepper({ val, onDec, onInc, suffix = 'm', minW = 'w-8', isDur = false }) {
                   return (
                     <div className="flex items-center gap-0.5">
                       <button onClick={onDec} className="w-5 h-5 rounded-full flex items-center justify-center"
                         style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)', fontSize: 12 }}>−</button>
-                      <span className={`data-value text-xs font-semibold ${minW} text-center`}>{val}{suffix}</span>
+                      <span className={`data-value text-xs font-semibold ${minW} text-center`}>{isDur ? fmtDurShort(val) : `${val}${suffix}`}</span>
                       <button onClick={onInc} className="w-5 h-5 rounded-full flex items-center justify-center"
                         style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text)', fontSize: 12 }}>+</button>
                     </div>
@@ -2070,11 +2216,11 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
                           <div className="flex items-center gap-4 flex-wrap">
                             <div className="flex items-center gap-1.5">
                               <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>Duration</p>
-                              <Stepper
+                              <DurInput
                                 val={block.durationMin}
-                                onDec={() => updateBlock(block.id, { durationMin: Math.max(5, block.durationMin - 5) })}
-                                onInc={() => updateBlock(block.id, { durationMin: Math.min(120, block.durationMin + 5) })}
-                                minW="w-10"
+                                onChange={v => updateBlock(block.id, { durationMin: v })}
+                                minVal={0.25}
+                                maxVal={180}
                               />
                             </div>
                             <div className="flex items-center gap-1.5">
@@ -2108,15 +2254,13 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
                             <span className="text-xs mt-4" style={{ color: 'var(--color-text-muted)' }}>×</span>
                             <div>
                               <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Work</p>
-                              <Stepper val={block.workMin ?? 4}
-                                onDec={() => updateBlock(block.id, { workMin: Math.max(1, (block.workMin ?? 4) - 1) })}
-                                onInc={() => updateBlock(block.id, { workMin: Math.min(30, (block.workMin ?? 4) + 1) })} />
+                              <DurInput val={block.workMin ?? 4}
+                                onChange={v => updateBlock(block.id, { workMin: v })} />
                             </div>
                             <div>
                               <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Rest</p>
-                              <Stepper val={block.restMin ?? 2}
-                                onDec={() => updateBlock(block.id, { restMin: Math.max(1, (block.restMin ?? 2) - 1) })}
-                                onInc={() => updateBlock(block.id, { restMin: Math.min(20, (block.restMin ?? 2) + 1) })} />
+                              <DurInput val={block.restMin ?? 2}
+                                onChange={v => updateBlock(block.id, { restMin: v })} />
                             </div>
                             <p className="text-[10px] mt-4 data-value" style={{ color: 'var(--color-text-muted)' }}>
                               = {fmtMin(dur)} total
@@ -2155,21 +2299,18 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
                             <span className="text-xs mt-4" style={{ color: 'var(--color-text-muted)' }}>×</span>
                             <div>
                               <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Hard</p>
-                              <Stepper val={block.hardMin ?? 3}
-                                onDec={() => updateBlock(block.id, { hardMin: Math.max(1, (block.hardMin ?? 3) - 1) })}
-                                onInc={() => updateBlock(block.id, { hardMin: Math.min(20, (block.hardMin ?? 3) + 1) })} />
+                              <DurInput val={block.hardMin ?? 3}
+                                onChange={v => updateBlock(block.id, { hardMin: v })} />
                             </div>
                             <div>
                               <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Harder</p>
-                              <Stepper val={block.harderMin ?? 2}
-                                onDec={() => updateBlock(block.id, { harderMin: Math.max(1, (block.harderMin ?? 2) - 1) })}
-                                onInc={() => updateBlock(block.id, { harderMin: Math.min(20, (block.harderMin ?? 2) + 1) })} />
+                              <DurInput val={block.harderMin ?? 2}
+                                onChange={v => updateBlock(block.id, { harderMin: v })} />
                             </div>
                             <div>
                               <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Easy</p>
-                              <Stepper val={block.easyMin ?? 2}
-                                onDec={() => updateBlock(block.id, { easyMin: Math.max(1, (block.easyMin ?? 2) - 1) })}
-                                onInc={() => updateBlock(block.id, { easyMin: Math.min(20, (block.easyMin ?? 2) + 1) })} />
+                              <DurInput val={block.easyMin ?? 2}
+                                onChange={v => updateBlock(block.id, { easyMin: v })} />
                             </div>
                             <p className="text-[10px] mt-4 data-value" style={{ color: 'var(--color-text-muted)' }}>
                               = {fmtMin(dur)} total
@@ -2216,9 +2357,8 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
                             <span className="text-xs mt-4" style={{ color: 'var(--color-text-muted)' }}>×</span>
                             <div>
                               <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Per step</p>
-                              <Stepper val={block.stepMin ?? 5}
-                                onDec={() => updateBlock(block.id, { stepMin: Math.max(1, (block.stepMin ?? 5) - 1) })}
-                                onInc={() => updateBlock(block.id, { stepMin: Math.min(20, (block.stepMin ?? 5) + 1) })} />
+                              <DurInput val={block.stepMin ?? 5}
+                                onChange={v => updateBlock(block.id, { stepMin: v })} />
                             </div>
                             <p className="text-[10px] mt-4 data-value" style={{ color: 'var(--color-text-muted)' }}>
                               = {fmtMin(dur)} total
@@ -2278,7 +2418,15 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
         {/* Workout shape preview */}
         {blocks.length > 0 && (
           <div className="rounded-xl overflow-hidden" style={{ backgroundColor: 'rgba(15,31,28,0.03)', border: 'var(--border)', padding: '10px 12px 8px' }}>
-            <p className="section-title mb-2">Workout shape</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="section-title">Workout shape</p>
+              {autoTSS > 0 && (
+                <span className="data-value text-[11px] font-semibold px-2 py-0.5 rounded-full"
+                  style={{ backgroundColor: 'rgba(0,200,150,0.10)', color: '#00A87E' }}>
+                  ~{autoTSS} TSS
+                </span>
+              )}
+            </div>
             <div style={{ display: 'flex', height: PH + 'px', gap: '2px', alignItems: 'flex-end' }}>
               {allPreviewSegs.map((s, i) => (
                 <div key={i} style={{
@@ -2294,7 +2442,7 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
             <div className="flex items-center justify-between">
               <span className="data-value text-[9px]" style={{ color: 'var(--color-text-muted)' }}>Start</span>
               <div className="flex items-center gap-2.5">
-                {[['#00C896','Z1–Z2'],['#F5A623','Z3'],['#E8803A','Z4'],['#E85555','Z5+']].map(([c,l]) => (
+                {[['#9CA8A4','Z1'],['#4A9EE8','Z2'],['#22C55E','Z3'],['#F5A623','Z4'],['#E85555','Z5+']].map(([c,l]) => (
                   <span key={l} className="flex items-center gap-1 text-[9px]" style={{ color: 'var(--color-text-muted)' }}>
                     <span style={{ width: 6, height: 6, borderRadius: 1, backgroundColor: c, display: 'inline-block' }} />{l}
                   </span>
@@ -2320,7 +2468,7 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
             <span className="text-base">⚡</span> Send to Zwift
           </button>
           <button
-            onClick={() => { if (onSave) onSave({ name, blocks, intensityMode, ftpPct, powerLow, powerHigh, hrPct, hrLow, hrHigh, totalMin }); else onClose() }}
+            onClick={() => { if (onSave) onSave({ name, blocks, intensityMode, ftpPct, powerLow, powerHigh, hrPct, hrLow, hrHigh, totalMin, tss: autoTSS }); else onClose() }}
             className="flex-1 py-2 rounded-full text-sm font-semibold"
             style={{ backgroundColor: 'var(--color-header)', color: 'var(--color-accent)' }}>
             Save workout
