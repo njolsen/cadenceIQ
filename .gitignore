@@ -3,8 +3,9 @@
 .env.local
 .env.*.local
 
-# Whoop OAuth token cache — contains live access/refresh tokens
+# OAuth / session caches — contain live tokens, never commit
 .whoop-session.json
+.garmin-session.json
 
 # Logs
 logs

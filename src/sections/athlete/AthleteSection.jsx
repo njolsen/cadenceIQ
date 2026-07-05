@@ -71,17 +71,17 @@ function ActivityDetailModal({ day, onClose }) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(10,22,40,0.55)', backdropFilter: 'blur(4px)' }}
+      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
+      style={{ backgroundColor: 'rgba(15,31,28,0.45)' }}
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-sm mx-4 rounded-2xl overflow-hidden"
-        style={{ backgroundColor: 'var(--color-surface)', border: 'var(--border)', boxShadow: '0 8px 40px rgba(10,22,40,0.25)' }}
+        className="relative w-full rounded-t-2xl sm:rounded-2xl overflow-y-auto"
+        style={{ backgroundColor: '#FFFFFF', boxShadow: '0 20px 60px rgba(15,31,28,0.25)', maxWidth: 400, maxHeight: '90vh' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 pt-5 pb-4" style={{ borderBottom: '0.5px solid rgba(15,31,28,0.08)' }}>
+        <div className="px-5 py-4" style={{ borderBottom: 'var(--border)' }}>
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="font-semibold text-base leading-tight" style={{ color: 'var(--color-text)' }}>
@@ -117,7 +117,7 @@ function ActivityDetailModal({ day, onClose }) {
         </div>
 
         {/* Stats */}
-        <div className="px-6 py-1 overflow-y-auto" style={{ maxHeight: '60vh' }}>
+        <div className="px-5 py-1">
           {acts.map((act, i) => (
             <div key={act.id ?? i}>
               {acts.length > 1 && (
@@ -142,10 +142,10 @@ function ActivityDetailModal({ day, onClose }) {
           ))}
         </div>
 
-        <div className="px-6 pb-5 pt-3">
+        <div className="px-5 pb-5 pt-3">
           <button
             onClick={onClose}
-            className="btn-primary w-full text-sm py-2.5"
+            className="w-full text-sm font-semibold py-2.5 rounded-xl transition-opacity hover:opacity-80 bg-header text-white"
           >Done</button>
         </div>
       </div>
@@ -208,7 +208,12 @@ export default function AthleteSection() {
   }, [garminStatus.connected])
 
   function refreshActivities() {
-    fetchActivities('2026-06-01', '2026-06-30', profile.ftp)
+    const today = new Date()
+    const twoYearsAgo = new Date(today)
+    twoYearsAgo.setFullYear(today.getFullYear() - 2)
+    const start = twoYearsAgo.toISOString().substring(0, 10)
+    const end   = today.toISOString().substring(0, 10)
+    fetchActivities(start, end, profile.ftp)
       .then(data => setActivityByDate(data.byDate || {}))
       .catch(() => {})
   }
@@ -1541,6 +1546,7 @@ function mergeWhoopData(live) {
   return {
     ...WHOOP_DATA,
     syncedAt:  live.syncedAt ?? WHOOP_DATA.syncedAt,
+    wakeTime:  live.wakeTime ?? WHOOP_DATA.wakeTime,
     recovery:  live.recovery ?? WHOOP_DATA.recovery,
     hrv:       { ...WHOOP_DATA.hrv,       value: live.hrv   ?? WHOOP_DATA.hrv.value,       trend: live.hrvTrend   ?? WHOOP_DATA.hrv.trend },
     sleep:     { ...WHOOP_DATA.sleep,     value: live.sleep  ?? WHOOP_DATA.sleep.value,     trend: live.sleepTrend ?? WHOOP_DATA.sleep.trend },
@@ -2067,20 +2073,7 @@ function DailyReadiness({ seasonData, onSetupSeason, blocks, setBlocks, whoopSta
   )
 }
 
-function AlertCard() {
-  return (
-    <div
-      className="rounded-2xl px-5 py-4 flex items-start gap-3"
-      style={{ backgroundColor: 'rgba(245,166,35,0.07)', border: '0.5px solid rgba(245,166,35,0.25)' }}
-    >
-      <span className="text-base mt-0.5 shrink-0">⚡</span>
-      <p className="text-sm" style={{ color: 'var(--color-text)' }}>
-        <span className="font-medium">Wednesday was auto-adjusted</span>
-        <span style={{ color: 'var(--color-text-muted)' }}> due to Tuesday's team dinner — recovery session shortened to 45 min and capped at Z1.</span>
-      </p>
-    </div>
-  )
-}
+
 
 function OverviewTab({ seasonData, onSetupSeason, todayBlocks, setTodayBlocks, whoopStatus, whoopLive, onConnectWhoop, onDisconnectWhoop }) {
   return (
@@ -2095,7 +2088,6 @@ function OverviewTab({ seasonData, onSetupSeason, todayBlocks, setTodayBlocks, w
         onConnectWhoop={onConnectWhoop}
         onDisconnectWhoop={onDisconnectWhoop}
       />
-      <AlertCard />
     </div>
   )
 }

@@ -488,6 +488,7 @@ export default function WeeklyCalendar({
           userWorkouts={userWorkouts}
           sessionOverrides={sessionOverrides}
           scheduleBlocks={scheduleBlocks}
+          onActivitySelect={onActivitySelect}
         />
       </div>
 
@@ -633,7 +634,7 @@ const MONTHS_RANGE = (() => {
 // ─── Month view (continuous scroll) ──────────────────────────────────────────
 
 // MonthView renders only the scrollable grid content — nav/headers live in WeeklyCalendar
-function MonthView({ dividerRefs, todayRowRef, allEvents, seasonData, onDaySelect, onDayAdd, onDaySelectItem, onRemoveItem, onCopyItem, onSkipSession, onPasteToDay, getDaySummary, userWorkouts, sessionOverrides, copiedItem, scheduleBlocks = [] }) {
+function MonthView({ dividerRefs, todayRowRef, allEvents, seasonData, onDaySelect, onDayAdd, onDaySelectItem, onRemoveItem, onCopyItem, onSkipSession, onPasteToDay, getDaySummary, userWorkouts, sessionOverrides, copiedItem, scheduleBlocks = [], onActivitySelect }) {
   const today = TODAY
   const races = seasonData?.races ?? []
   const [contextMenu, setContextMenu] = useState(null)
@@ -818,7 +819,7 @@ function MonthView({ dividerRefs, todayRowRef, allEvents, seasonData, onDaySelec
                               title="Add to this day"
                             >
                               <span className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold leading-none"
-                                style={{ backgroundColor: 'rgba(0,200,150,0.15)', color: '#00A87E' }}>
+                                style={{ backgroundColor: '#0F1F1C', color: '#ffffff' }}>
                                 +
                               </span>
                             </div>

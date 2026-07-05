@@ -156,6 +156,7 @@ function mapSleep(s) {
   return {
     id:             s.id,
     date:           isoToDateStr(s.start),
+    wakeAt:         s.end ?? null,   // ISO timestamp of when user woke up
     nap:            s.nap ?? false,
     hoursOfSleep:   score.hours_of_sleep ?? null,
     efficiency:     score.sleep_efficiency_percentage ?? null,
@@ -271,7 +272,8 @@ async function getLatestSleep() {
     start: start.toISOString(),
     end:   end.toISOString(),
   })
-  const nights = records.map(mapSleep).filter(s => !s.nap && s.state === 'SCORED' && s.hoursOfSleep != null)
+  const mapped = records.map(mapSleep)
+  const nights = mapped.filter(s => !s.nap && s.state === 'SCORED' && s.hoursOfSleep != null)
   nights.sort((a, b) => b.date.localeCompare(a.date))
   const last  = nights[0] ?? null
   const prev  = nights[1] ?? null
@@ -279,9 +281,20 @@ async function getLatestSleep() {
     : last.hoursOfSleep > prev.hoursOfSleep + 0.25 ? 'up'
     : last.hoursOfSleep < prev.hoursOfSleep - 0.25 ? 'down'
     : 'flat'
+
+  // Wake time: use the most recent non-nap sleep's end timestamp regardless of scoring state
+  // (end is available immediately; scoring takes longer)
+  const recentSleeps = mapped.filter(s => !s.nap && s.wakeAt).sort((a, b) => b.wakeAt.localeCompare(a.wakeAt))
+  let wakeTime = null
+  if (recentSleeps[0]?.wakeAt) {
+    const d = new Date(recentSleeps[0].wakeAt)
+    wakeTime = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  }
+
   return {
     sleep:      last?.hoursOfSleep ?? null,
     sleepTrend: trend,
+    wakeTime,
   }
 }
 
