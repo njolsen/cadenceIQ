@@ -1,6 +1,62 @@
 import { useState, useRef, useEffect } from 'react'
 import { SeasonArc } from './AthleteSection'
 
+function BikeIcon({ size = 11, color = 'currentColor' }) {
+  const s = { stroke: color }
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline', flexShrink: 0, verticalAlign: 'middle', overflow: 'visible' }}>
+      <circle cx="6" cy="17" r="4.5" style={{ ...s, strokeWidth: 2 }}/>
+      <circle cx="18" cy="17" r="4.5" style={{ ...s, strokeWidth: 2 }}/>
+      <path d="M6,17 L11,17 L8.5,9 L6,17" style={{ fill: color, stroke: color, strokeWidth: 0.5 }}/>
+      <line x1="8.5" y1="9" x2="16" y2="9" style={{ ...s, strokeWidth: 2 }}/>
+      <line x1="11" y1="17" x2="17" y2="12" style={{ ...s, strokeWidth: 2 }}/>
+      <line x1="17" y1="12" x2="18" y2="17" style={{ ...s, strokeWidth: 2 }}/>
+      <line x1="8.5" y1="9" x2="8.5" y2="6" style={{ ...s, strokeWidth: 2 }}/>
+      <line x1="6" y1="6" x2="11" y2="6" style={{ ...s, strokeWidth: 2 }}/>
+      <line x1="16" y1="9" x2="16" y2="6" style={{ ...s, strokeWidth: 2 }}/>
+      <line x1="14" y1="6" x2="19" y2="6" style={{ ...s, strokeWidth: 2 }}/>
+    </svg>
+  )
+}
+
+function DumbbellIcon({ size = 11, color = 'currentColor' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" style={{ display: 'inline', flexShrink: 0, verticalAlign: 'middle', fill: color }}>
+      <rect x="1" y="7" width="3" height="6" rx="1"/>
+      <rect x="4" y="8.5" width="4" height="3" rx="0.5"/>
+      <rect x="8" y="9" width="4" height="2" rx="0.5"/>
+      <rect x="12" y="8.5" width="4" height="3" rx="0.5"/>
+      <rect x="16" y="7" width="3" height="6" rx="1"/>
+    </svg>
+  )
+}
+
+function FlagIcon({ size = 11, color = 'currentColor' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" style={{ display: 'inline', flexShrink: 0, verticalAlign: 'middle', fill: color }}>
+      <rect x="3" y="2" width="2" height="16" rx="1"/>
+      <path d="M5 2 L17 2 L17 10 L5 10 Z"/>
+      <rect x="5" y="2" width="4" height="4" style={{ fill: 'white' }}/>
+      <rect x="9" y="6" width="4" height="4" style={{ fill: 'white' }}/>
+      <rect x="13" y="2" width="4" height="4" style={{ fill: 'white' }}/>
+    </svg>
+  )
+}
+
+function SportIcon({ sport, type, size = 11, color }) {
+  const s = (sport || type || '').toLowerCase()
+  if (s.includes('cycling') || s.includes('bike') || s.includes('virtual') || s.includes('ride')) {
+    return <BikeIcon size={size} color={color ?? 'currentColor'} />
+  }
+  if (s.includes('gym') || s.includes('strength') || s.includes('weight')) {
+    return <DumbbellIcon size={size} color={color ?? 'currentColor'} />
+  }
+  if (s.includes('event') || s.includes('race') || s.includes('flag')) {
+    return <FlagIcon size={size} color={color ?? 'currentColor'} />
+  }
+  return null
+}
+
 function localIso(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
@@ -748,7 +804,10 @@ function MonthView({ dividerRefs, todayRowRef, allEvents, seasonData, onDaySelec
                                 style={{ backgroundColor: 'rgba(0,168,126,0.06)', border: '0.5px solid rgba(0,168,126,0.2)' }}
                                 onClick={e => { e.stopPropagation(); onActivitySelect?.(actDay) }}
                               >
-                                <p className="text-xs font-semibold leading-tight" style={{ color: 'var(--color-text)' }}>{actDay.primary.sport}</p>
+                                <p className="text-xs font-semibold leading-tight flex items-center gap-1" style={{ color: 'var(--color-text)' }}>
+                                  <SportIcon sport={actDay.primary.sport} size={12} color="#1A2421" />
+                                  {actDay.primary.sport}
+                                </p>
                                 {actDay.totalDuration && (
                                   <p className="data-value text-sm font-bold leading-none mt-1" style={{ color: 'var(--color-text)' }}>{actDay.totalDuration}</p>
                                 )}
@@ -794,7 +853,6 @@ function MonthView({ dividerRefs, todayRowRef, allEvents, seasonData, onDaySelec
                               const color = w.type === 'gym' ? '#A78BFA' : w.type === 'event' ? '#FF2D78' : '#00C896'
                               const bg    = w.type === 'gym' ? 'rgba(167,139,250,0.08)' : w.type === 'event' ? 'rgba(255,45,120,0.06)' : 'rgba(0,200,150,0.06)'
                               const border = w.type === 'gym' ? 'rgba(167,139,250,0.25)' : w.type === 'event' ? 'rgba(255,45,120,0.2)' : 'rgba(0,200,150,0.2)'
-                              const icon  = w.type === 'gym' ? '🏋️' : w.type === 'event' ? '🏁' : '🚴'
                               const label = w.name || (w.type === 'gym' ? 'Gym' : w.type === 'event' ? 'Event' : 'Ride')
                               return (
                                 <div key={wi2} className="rounded-lg px-2 py-1.5 mt-1 cursor-pointer"
@@ -802,7 +860,7 @@ function MonthView({ dividerRefs, todayRowRef, allEvents, seasonData, onDaySelec
                                   onClick={e => { e.stopPropagation(); onDaySelectItem(dateStr, w.id) }}
                                   onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setContextMenu({ dateStr, itemId: w.id, item: w, label, x: e.clientX, y: e.clientY }) }}>
                                   <div className="flex items-center gap-1.5">
-                                    <span className="text-xs leading-none">{icon}</span>
+                                    <SportIcon type={w.type} size={12} color={color} />
                                     <span className="text-xs font-medium truncate" style={{ color }}>{label}</span>
                                   </div>
                                   {w.tss > 0 && (
@@ -939,6 +997,7 @@ function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWo
   const [editingId, setEditingId] = useState(null)
   const [editDraft, setEditDraft] = useState(null)
   const [editBikeItem, setEditBikeItem] = useState(null)
+  const [editGymItem, setEditGymItem] = useState(null)
   const [modalContextMenu, setModalContextMenu] = useState(null)
 
   useEffect(() => {
@@ -958,6 +1017,7 @@ function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWo
   const d = new Date(date + 'T00:00:00')
   const label = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
   const isBike = mode === 'bike' || mode === 'edit_plan' || mode === 'edit_bike'
+  const isGym  = mode === 'gym' || mode === 'edit_gym'
 
   return (
     <div
@@ -970,7 +1030,7 @@ function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWo
         style={{
           backgroundColor: '#FFFFFF',
           boxShadow: '0 20px 60px rgba(15,31,28,0.25)',
-          maxWidth: isBike ? 680 : 400,
+          maxWidth: isBike ? 680 : isGym ? 480 : 400,
           maxHeight: '90vh',
           overflowY: 'auto',
         }}
@@ -1016,7 +1076,12 @@ function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWo
                           <span className="text-sm">{ITEM_TYPE_ICON[w.type] ?? '📌'}</span>
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-semibold truncate" style={{ color: 'var(--color-text)' }}>{displayName}</p>
-                            {w.type === 'gym' && w.duration && !isEditing && <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{w.duration} min</p>}
+                            {w.type === 'gym' && !isEditing && (
+                              <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+                                {w.duration ? `${w.duration} min` : ''}
+                                {w.blocks?.length > 0 && ` · ${w.blocks.length} block${w.blocks.length !== 1 ? 's' : ''}`}
+                              </p>
+                            )}
                             {w.type === 'event' && w.eventType && !isEditing && <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{w.eventType} · {w.priority}</p>}
                           </div>
                           {!isEditing && (
@@ -1025,6 +1090,7 @@ function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWo
                                 style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}
                                 onClick={() => {
                                   if (w.type === 'bike') { setEditBikeItem(w); onSetMode('edit_bike') }
+                                  else if (w.type === 'gym') { setEditGymItem(w); onSetMode('edit_gym') }
                                   else startEdit(w)
                                 }}>Edit</button>
                               <button className="text-[10px] font-medium px-2 py-1 rounded-lg"
@@ -1037,8 +1103,41 @@ function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWo
                         {/* Expanded detail view — shown when this specific item is selected */}
                         {selectedItemId && !isEditing && (w.notes || w.location || w.type === 'bike') && (
                           <div className="px-3 pb-3" style={{ borderTop: '0.5px solid rgba(15,31,28,0.08)' }}>
-                            {w.type === 'gym' && w.notes && (
-                              <p className="text-xs mt-2 leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>{w.notes}</p>
+                            {w.type === 'gym' && (
+                              w.blocks?.length > 0 ? (
+                                <div className="mt-2 space-y-2.5">
+                                  {w.blocks.map((block, bi) => (
+                                    block.type === 'single' ? (
+                                      <div key={block.id}>
+                                        <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: GYM_ACCENT }}>{block.exercise?.name || 'Exercise'}</p>
+                                        {(block.exercise?.sets ?? []).map((s, si) => (
+                                          <p key={s.id} className="data-value text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+                                            Set {si + 1}: {s.reps} reps{s.weight ? ` × ${s.weight} lbs` : ''}
+                                          </p>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <div key={block.id}>
+                                        <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: GYM_ACCENT }}>
+                                          Superset {bi + 1}
+                                        </p>
+                                        {(block.exercises ?? []).map((ex, ei) => (
+                                          <div key={ex.id} className={ei > 0 ? 'mt-1.5' : ''}>
+                                            <p className="text-[10px] font-semibold" style={{ color: 'var(--color-text)' }}>{ex.name || 'Exercise'}</p>
+                                            {(ex.sets ?? []).map((s, si) => (
+                                              <p key={s.id} className="data-value text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+                                                Set {si + 1}: {s.reps} reps{s.weight ? ` × ${s.weight} lbs` : ''}
+                                              </p>
+                                            ))}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )
+                                  ))}
+                                </div>
+                              ) : w.notes ? (
+                                <p className="text-xs mt-2 leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>{w.notes}</p>
+                              ) : null
                             )}
                             {w.type === 'event' && (
                               <div className="mt-2 space-y-1">
@@ -1069,22 +1168,10 @@ function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWo
                               </div>
                             )}
                             {w.type === 'gym' && (
-                              <div className="space-y-2 pt-2">
-                                <div>
-                                  <label className="text-[10px] uppercase tracking-wide mb-1 block" style={{ color: 'var(--color-text-muted)' }}>Name</label>
-                                  <input className="w-full text-xs rounded-lg px-2.5 py-1.5 outline-none" style={{ border: 'var(--border)', backgroundColor: '#FFFFFF' }}
-                                    value={editDraft.name || ''} onChange={e => setEditDraft({ ...editDraft, name: e.target.value })} />
-                                </div>
-                                <div>
-                                  <label className="text-[10px] uppercase tracking-wide mb-1 block" style={{ color: 'var(--color-text-muted)' }}>Duration (min)</label>
-                                  <input type="number" className="w-full text-xs rounded-lg px-2.5 py-1.5 outline-none data-value" style={{ border: 'var(--border)', backgroundColor: '#FFFFFF' }}
-                                    value={editDraft.duration || ''} onChange={e => setEditDraft({ ...editDraft, duration: e.target.value })} />
-                                </div>
-                                <div>
-                                  <label className="text-[10px] uppercase tracking-wide mb-1 block" style={{ color: 'var(--color-text-muted)' }}>Exercises / Notes</label>
-                                  <textarea className="w-full text-xs rounded-lg px-2.5 py-1.5 outline-none resize-none" rows={2} style={{ border: 'var(--border)', backgroundColor: '#FFFFFF' }}
-                                    value={editDraft.notes || ''} onChange={e => setEditDraft({ ...editDraft, notes: e.target.value })} />
-                                </div>
+                              <div className="pt-2">
+                                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                                  Use the Edit button above to open the full workout builder.
+                                </p>
                               </div>
                             )}
                             {w.type === 'event' && (
@@ -1236,12 +1323,31 @@ function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWo
           )
         })()}
 
-        {/* Gym form */}
+        {/* Gym form — add new */}
         {mode === 'gym' && (
           <div className="p-5">
             <GymForm onSave={onSave} onCancel={() => onSetMode('pick')} />
           </div>
         )}
+
+        {/* Gym form — edit existing */}
+        {mode === 'edit_gym' && (() => {
+          const gymItem = editGymItem ?? dayWorkouts.find(w => w.id === selectedItemId)
+          if (!gymItem) return null
+          return (
+            <div className="p-5">
+              <GymForm
+                initial={gymItem}
+                onSave={updated => {
+                  onUpdateWorkout({ ...gymItem, ...updated, id: gymItem.id })
+                  setEditGymItem(null)
+                  onClose()
+                }}
+                onCancel={() => { setEditGymItem(null); onSetMode('pick') }}
+              />
+            </div>
+          )
+        })()}
 
         {/* Event form */}
         {mode === 'event' && (
@@ -1461,42 +1567,245 @@ function MonthDayDetail({ dateStr, session, activityDay, lifeEvents, race, build
 
 // ─── GymForm ─────────────────────────────────────────────────────────────────
 
-function GymForm({ onSave, onCancel }) {
-  const [duration, setDuration] = useState(60)
-  const [notes, setNotes] = useState('')
+const GYM_ACCENT = '#A78BFA'
+
+function SetRow({ num, set, onUpdate, onRemove, canRemove }) {
+  return (
+    <div className="flex items-center gap-2 py-1">
+      <span className="data-value text-[10px] w-5 text-right shrink-0" style={{ color: 'var(--color-text-muted)' }}>
+        {num}
+      </span>
+      <div className="flex items-center gap-1 shrink-0">
+        <button
+          onClick={() => onUpdate({ ...set, reps: Math.max(1, set.reps - 1) })}
+          className="w-5 h-5 rounded-full flex items-center justify-center text-xs"
+          style={{ backgroundColor: 'rgba(15,31,28,0.07)', color: 'var(--color-text-muted)' }}>−</button>
+        <span className="data-value text-xs font-bold w-5 text-center">{set.reps}</span>
+        <button
+          onClick={() => onUpdate({ ...set, reps: Math.min(50, set.reps + 1) })}
+          className="w-5 h-5 rounded-full flex items-center justify-center text-xs"
+          style={{ backgroundColor: 'rgba(15,31,28,0.07)', color: 'var(--color-text)' }}>+</button>
+        <span className="text-[10px] ml-0.5 shrink-0" style={{ color: 'var(--color-text-muted)' }}>reps</span>
+      </div>
+      <input
+        type="text"
+        inputMode="decimal"
+        placeholder="— lbs"
+        value={set.weight}
+        onChange={e => onUpdate({ ...set, weight: e.target.value })}
+        className="data-value text-xs rounded-lg px-2 py-1 outline-none flex-1 min-w-0 text-right"
+        style={{ border: 'var(--border)', backgroundColor: '#FFFFFF', color: 'var(--color-text)' }}
+      />
+      <button
+        onClick={onRemove}
+        className="w-5 h-5 rounded-full flex items-center justify-center text-xs shrink-0 transition-opacity"
+        style={{
+          backgroundColor: canRemove ? 'rgba(232,85,85,0.08)' : 'transparent',
+          color: canRemove ? '#C94444' : 'transparent',
+          cursor: canRemove ? 'pointer' : 'default',
+        }}
+        disabled={!canRemove}
+      >×</button>
+    </div>
+  )
+}
+
+function ExerciseBlock({ exercise, onUpdate }) {
+  function updateSet(setId, updated) {
+    onUpdate({ ...exercise, sets: exercise.sets.map(s => s.id !== setId ? s : updated) })
+  }
+  function removeSet(setId) {
+    const sets = exercise.sets.filter(s => s.id !== setId)
+    if (sets.length === 0) return
+    onUpdate({ ...exercise, sets })
+  }
+  function addSet() {
+    const last = exercise.sets[exercise.sets.length - 1]
+    onUpdate({ ...exercise, sets: [...exercise.sets, { id: Date.now() + Math.random(), reps: last?.reps ?? 8, weight: last?.weight ?? '' }] })
+  }
+  return (
+    <div className="space-y-0.5">
+      <input
+        type="text"
+        placeholder="Exercise name"
+        value={exercise.name}
+        onChange={e => onUpdate({ ...exercise, name: e.target.value })}
+        className="w-full text-xs font-semibold rounded-lg px-2.5 py-1.5 outline-none"
+        style={{ border: 'var(--border)', backgroundColor: '#FFFFFF', color: 'var(--color-text)' }}
+      />
+      <div className="pl-1">
+        {exercise.sets.map((s, i) => (
+          <SetRow
+            key={s.id}
+            num={i + 1}
+            set={s}
+            onUpdate={updated => updateSet(s.id, updated)}
+            onRemove={() => removeSet(s.id)}
+            canRemove={exercise.sets.length > 1}
+          />
+        ))}
+        <button
+          onClick={addSet}
+          className="text-[10px] font-semibold px-2 py-0.5 rounded mt-0.5"
+          style={{ color: GYM_ACCENT, backgroundColor: `${GYM_ACCENT}12` }}
+        >+ set</button>
+      </div>
+    </div>
+  )
+}
+
+function GymForm({ onSave, onCancel, initial = null }) {
+  const makeId  = () => Date.now() + Math.random()
+  const makeSet = (prev = null) => ({ id: makeId(), reps: prev?.reps ?? 8, weight: prev?.weight ?? '' })
+  const makeExercise = (name = '') => ({ id: makeId(), name, sets: [makeSet()] })
+
+  const [sessionName, setSessionName] = useState(initial?.name ?? 'Gym / Strength')
+  const [duration, setDuration]       = useState(initial?.duration ?? 60)
+  const [blocks, setBlocks]           = useState(initial?.blocks ?? [])
+
+  function addSingleBlock() {
+    setBlocks(b => [...b, { id: makeId(), type: 'single', exercise: makeExercise() }])
+  }
+  function addSupersetBlock() {
+    setBlocks(b => [...b, { id: makeId(), type: 'superset', exercises: [makeExercise(), makeExercise()] }])
+  }
+  function removeBlock(blockId) {
+    setBlocks(b => b.filter(x => x.id !== blockId))
+  }
+  function updateSingleExercise(blockId, updated) {
+    setBlocks(b => b.map(x => x.id !== blockId ? x : { ...x, exercise: updated }))
+  }
+  function updateSupersetExercise(blockId, exId, updated) {
+    setBlocks(b => b.map(x => {
+      if (x.id !== blockId) return x
+      return { ...x, exercises: x.exercises.map(e => e.id !== exId ? e : updated) }
+    }))
+  }
+  function addExerciseToSuperset(blockId) {
+    setBlocks(b => b.map(x => {
+      if (x.id !== blockId) return x
+      return { ...x, exercises: [...x.exercises, makeExercise()] }
+    }))
+  }
+  function removeExerciseFromSuperset(blockId, exId) {
+    setBlocks(b => b.map(x => {
+      if (x.id !== blockId) return x
+      const exercises = x.exercises.filter(e => e.id !== exId)
+      return { ...x, exercises: exercises.length ? exercises : [makeExercise()] }
+    }))
+  }
+
+  const canSave = blocks.length > 0
+
   return (
     <div className="space-y-4">
-      <p className="section-title">Gym / Strength session</p>
-      <div className="flex items-center gap-4">
-        <p className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>Duration</p>
-        <div className="flex items-center gap-2">
+      {/* Header row */}
+      <div className="flex items-center justify-between gap-3">
+        <input
+          type="text"
+          value={sessionName}
+          onChange={e => setSessionName(e.target.value)}
+          className="flex-1 text-sm font-semibold rounded-lg px-3 py-2 outline-none"
+          style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)', color: 'var(--color-text)' }}
+          placeholder="Session name"
+        />
+        <div className="flex items-center gap-1.5 shrink-0">
           <button onClick={() => setDuration(v => Math.max(15, v - 15))}
-            className="w-7 h-7 rounded-full flex items-center justify-center text-base"
+            className="w-6 h-6 rounded-full flex items-center justify-center text-xs"
             style={{ backgroundColor: 'rgba(15,31,28,0.07)', color: 'var(--color-text-muted)' }}>−</button>
-          <span className="data-value text-sm font-bold w-14 text-center">{duration} min</span>
+          <span className="data-value text-xs font-bold w-10 text-center">{duration}m</span>
           <button onClick={() => setDuration(v => Math.min(180, v + 15))}
-            className="w-7 h-7 rounded-full flex items-center justify-center text-base"
+            className="w-6 h-6 rounded-full flex items-center justify-center text-xs"
             style={{ backgroundColor: 'rgba(15,31,28,0.07)', color: 'var(--color-text)' }}>+</button>
         </div>
       </div>
-      <div>
-        <p className="text-xs font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>Exercises / Notes</p>
-        <textarea
-          className="w-full rounded-xl px-3 py-2.5 text-sm outline-none resize-none"
-          style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }}
-          placeholder="e.g. Squats 3×8, Romanian deadlift 3×10, Pull-ups 3×8..."
-          rows={4} value={notes} onChange={e => setNotes(e.target.value)}
-        />
+
+      {/* Workout blocks */}
+      {blocks.length > 0 && (
+        <div className="space-y-3">
+          {blocks.map((block, bi) => (
+            <div key={block.id} className="rounded-xl p-3 space-y-2.5"
+              style={{ border: `1px solid ${GYM_ACCENT}30`, backgroundColor: `${GYM_ACCENT}06` }}>
+              {/* Block header */}
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: GYM_ACCENT }}>
+                  {block.type === 'single' ? `Block ${bi + 1} · Single Set` : `Block ${bi + 1} · Superset`}
+                </span>
+                <button onClick={() => removeBlock(block.id)}
+                  className="text-[10px] px-1.5 py-0.5 rounded"
+                  style={{ color: '#C94444', backgroundColor: 'rgba(232,85,85,0.08)' }}>Remove</button>
+              </div>
+
+              {block.type === 'single' && (
+                <ExerciseBlock
+                  exercise={block.exercise}
+                  onUpdate={updated => updateSingleExercise(block.id, updated)}
+                />
+              )}
+
+              {block.type === 'superset' && (
+                <div className="space-y-3">
+                  {block.exercises.map((ex, ei) => (
+                    <div key={ex.id}>
+                      {block.exercises.length > 1 && (
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] uppercase tracking-wider font-semibold"
+                            style={{ color: 'var(--color-text-muted)' }}>Exercise {ei + 1}</span>
+                          <button onClick={() => removeExerciseFromSuperset(block.id, ex.id)}
+                            className="text-[10px] px-1 py-0.5 rounded"
+                            style={{ color: 'var(--color-text-muted)' }}>✕</button>
+                        </div>
+                      )}
+                      <ExerciseBlock
+                        exercise={ex}
+                        onUpdate={updated => updateSupersetExercise(block.id, ex.id, updated)}
+                      />
+                      {ei < block.exercises.length - 1 && (
+                        <div className="mt-2.5 mb-1 flex items-center gap-2">
+                          <div className="flex-1 h-px" style={{ backgroundColor: `${GYM_ACCENT}25` }} />
+                          <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: `${GYM_ACCENT}80` }}>then</span>
+                          <div className="flex-1 h-px" style={{ backgroundColor: `${GYM_ACCENT}25` }} />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  <button onClick={() => addExerciseToSuperset(block.id)}
+                    className="text-[10px] font-semibold px-2.5 py-1 rounded-full"
+                    style={{ color: GYM_ACCENT, backgroundColor: `${GYM_ACCENT}12` }}>
+                    + Add exercise
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add block buttons */}
+      <div className="flex gap-2">
+        <button onClick={addSingleBlock}
+          className="flex-1 py-2 rounded-xl text-xs font-semibold border-2 border-dashed transition-colors"
+          style={{ borderColor: `${GYM_ACCENT}40`, color: GYM_ACCENT, backgroundColor: `${GYM_ACCENT}06` }}>
+          + Single Set
+        </button>
+        <button onClick={addSupersetBlock}
+          className="flex-1 py-2 rounded-xl text-xs font-semibold border-2 border-dashed transition-colors"
+          style={{ borderColor: `${GYM_ACCENT}40`, color: GYM_ACCENT, backgroundColor: `${GYM_ACCENT}06` }}>
+          + Superset
+        </button>
       </div>
+
+      {/* Actions */}
       <div className="flex gap-2 pt-1">
         <button onClick={onCancel}
           className="flex-1 py-2.5 rounded-full text-sm font-medium"
           style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text-muted)' }}>Cancel</button>
         <button
-          onClick={() => onSave({ type: 'gym', name: 'Gym / Strength', duration, notes })}
-          className="flex-1 py-2.5 rounded-full text-sm font-semibold"
-          style={{ backgroundColor: '#A78BFA', color: '#fff' }}>
-          Add session
+          onClick={() => onSave({ type: 'gym', name: sessionName.trim() || 'Gym / Strength', duration, blocks })}
+          disabled={!canSave}
+          className="flex-1 py-2.5 rounded-full text-sm font-semibold transition-opacity"
+          style={{ backgroundColor: GYM_ACCENT, color: '#fff', opacity: canSave ? 1 : 0.4 }}>
+          {initial ? 'Save session' : 'Add session'}
         </button>
       </div>
     </div>

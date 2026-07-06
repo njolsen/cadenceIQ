@@ -31,6 +31,9 @@ const ZWIFT_DIR = path.join(os.homedir(), 'Documents', 'Zwift', 'Activities')
 const cache = new Map()
 
 function parseFitFile(filePath, ftp) {
+  const cacheKey = filePath
+  if (cache.has(cacheKey)) return Promise.resolve(cache.get(cacheKey))
+
   return new Promise((resolve, reject) => {
     const parser = new FitParser({ force: true, mode: 'list', lengthUnit: 'm', speedUnit: 'm/s' })
     let buf
@@ -56,7 +59,7 @@ function parseFitFile(filePath, ftp) {
       const intensity = inferIntensity(avgPower, ftp)
       const ifVal = ftp > 0 && normPower > 0 ? parseFloat((normPower / ftp).toFixed(3)) : null
 
-      resolve({
+      const result = {
         id: `zwift_${filename}`,
         source: 'zwift',
         name: 'Zwift · Virtual Ride',
@@ -76,7 +79,9 @@ function parseFitFile(filePath, ftp) {
         intensity,
         est_tss: tss,
         intensity_factor: ifVal,
-      })
+      }
+      cache.set(cacheKey, result)
+      resolve(result)
     })
   })
 }

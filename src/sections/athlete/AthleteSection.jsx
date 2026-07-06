@@ -1567,9 +1567,10 @@ function DailyReadiness({ seasonData, onSetupSeason, blocks, setBlocks, whoopSta
 
   const [bed, setBed] = useState(null)
   const effectiveBed = bed ?? '22:00' // fallback for timeline calculations until user sets bedtime
-  const [addForm,    setAddForm]    = useState({ ...BLOCK_DEFAULTS })
-  const [editingId,  setEditingId]  = useState(null)
-  const [editForm,   setEditForm]   = useState({})
+  const [addForm,      setAddForm]      = useState({ ...BLOCK_DEFAULTS })
+  const [showAddForm,  setShowAddForm]  = useState(false)
+  const [editingId,    setEditingId]    = useState(null)
+  const [editForm,     setEditForm]     = useState({})
   const [stress,       setStress]       = useState('none')
   const [injury,       setInjury]       = useState('none')
   const [hasCheckedIn, setHasCheckedIn] = useState(false)
@@ -1832,6 +1833,68 @@ function DailyReadiness({ seasonData, onSetupSeason, blocks, setBlocks, whoopSta
 
             <div className="pl-7 space-y-2">
 
+              {/* Prompt + preset chips */}
+              {(() => {
+                const decToHHMM = dec => {
+                  const h = Math.floor(dec), m = Math.round((dec - h) * 60)
+                  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`
+                }
+                const workBlock  = blocks.find(b => b.type === 'work')
+                const workStart  = workBlock?.start ?? '09:00'
+                const preWorkDec = Math.max(0, toDec(workStart) - 2)
+                const windDownDec = bed ? Math.max(0, toDec(bed) - 2) : null
+
+                const PRESETS = [
+                  {
+                    key: 'work',
+                    label: 'Work',
+                    sub: '9am – 5pm',
+                    block: { type: 'work', label: 'Work', start: '09:00', end: '17:00' },
+                  },
+                  windDownDec != null && {
+                    key: 'winddown',
+                    label: 'Wind Down',
+                    sub: `${toLabel(windDownDec)} – ${toLabel(toDec(bed))}`,
+                    block: { type: 'other', label: 'Wind Down', start: decToHHMM(windDownDec), end: bed },
+                  },
+                  {
+                    key: 'prework',
+                    label: 'Pre-Work',
+                    sub: `${toLabel(preWorkDec)} – ${toLabel(toDec(workStart))}`,
+                    block: { type: 'other', label: 'Pre-Work', start: decToHHMM(preWorkDec), end: workStart },
+                  },
+                ].filter(Boolean)
+
+                const visible = PRESETS.filter(p => !blocks.some(b => b.label === p.block.label))
+                return (
+                  <div className="space-y-2">
+                    <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                      Add scheduled items of your day
+                    </p>
+                    {visible.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {visible.map(p => (
+                          <button
+                            key={p.key}
+                            onClick={() => { setAddForm({ ...p.block }); setShowAddForm(true) }}
+                            className="flex items-center gap-2 px-3 py-1.5 rounded-full text-[11px] font-medium transition-colors hover:opacity-80"
+                            style={{
+                              backgroundColor: BLOCK_COLOR[p.block.type] ? `${BLOCK_COLOR[p.block.type]}18` : 'rgba(15,31,28,0.06)',
+                              border: `0.5px solid ${BLOCK_COLOR[p.block.type] ?? 'rgba(15,31,28,0.15)'}40`,
+                              color: 'var(--color-text)',
+                            }}
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: BLOCK_COLOR[p.block.type] ?? '#94A3B8' }} />
+                            <span>{p.label}</span>
+                            <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>{p.sub}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+
               {/* Committed items */}
               {blocks.map(b => {
                 const dur = Math.max(0, toDec(b.end) - toDec(b.start))
@@ -1846,10 +1909,7 @@ function DailyReadiness({ seasonData, onSetupSeason, blocks, setBlocks, whoopSta
                           const active = editForm.type === t
                           return (
                             <button key={t}
-                              onClick={() => setEditForm(f => ({
-                                ...f, type: t,
-                                label: !f.label || Object.values(BLOCK_LABEL).includes(f.label) ? BLOCK_LABEL[t] : f.label,
-                              }))}
+                              onClick={() => setEditForm(f => ({ ...f, type: t }))}
                               className="px-2.5 py-0.5 rounded-full text-[11px] capitalize transition-colors"
                               style={active
                                 ? { backgroundColor: '#0A1628', color: '#ffffff', fontWeight: 600 }
@@ -1917,53 +1977,72 @@ function DailyReadiness({ seasonData, onSetupSeason, blocks, setBlocks, whoopSta
                 )
               })}
 
-              {/* Inline add form — feels like the next item in the list */}
-              <div className="rounded-xl px-3 py-2.5 space-y-2"
-                style={{ border: '0.5px dashed rgba(15,31,28,0.18)', backgroundColor: 'rgba(15,31,28,0.02)' }}>
-                <div className="flex flex-wrap gap-1.5">
-                  {TAG_OPTIONS.map(t => {
-                    const active = addForm.type === t
-                    return (
-                      <button key={t}
-                        onClick={() => setAddForm(f => ({
-                          ...f, type: t,
-                          label: !f.label || Object.values(BLOCK_LABEL).includes(f.label) ? BLOCK_LABEL[t] : f.label,
-                        }))}
-                        className="px-2.5 py-0.5 rounded-full text-[11px] capitalize transition-colors"
-                        style={active
-                          ? { backgroundColor: '#0A1628', color: '#ffffff', fontWeight: 600 }
-                          : { backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }
-                        }
-                      >{BLOCK_LABEL[t]}</button>
-                    )
-                  })}
+              {/* Add form — collapsed by default */}
+              {!showAddForm ? (
+                <button
+                  className="px-2.5 py-1 rounded-lg text-[11px] font-semibold"
+                  style={{ backgroundColor: '#0A1628', color: '#fff' }}
+                  onClick={() => { setAddForm({ ...BLOCK_DEFAULTS, type: '' }); setShowAddForm(true) }}
+                >+ Add custom</button>
+              ) : (
+                <div className="rounded-xl px-3 py-2.5 space-y-2"
+                  style={{ border: '0.5px dashed rgba(15,31,28,0.18)', backgroundColor: 'rgba(15,31,28,0.02)' }}>
+                  {/* Name first */}
+                  <input
+                    autoFocus
+                    value={addForm.label}
+                    onChange={e => setAddForm(f => ({ ...f, label: e.target.value }))}
+                    placeholder={`Name (e.g. "${BLOCK_LABEL[addForm.type] ?? 'Work'}")`}
+                    className="w-full text-xs rounded-lg px-2.5 py-1.5 outline-none"
+                    style={{ border: 'var(--border)', backgroundColor: '#FFFFFF', color: 'var(--color-text)' }}
+                  />
+                  {/* Tags below */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[10px] font-medium shrink-0" style={{ color: 'var(--color-text-muted)' }}>Tag:</span>
+                    {TAG_OPTIONS.map(t => {
+                      const active = addForm.type === t
+                      return (
+                        <button key={t}
+                          onClick={() => setAddForm(f => ({ ...f, type: t }))}
+                          className="px-2.5 py-0.5 rounded-full text-[11px] capitalize transition-colors"
+                          style={active
+                            ? { backgroundColor: '#0A1628', color: '#ffffff', fontWeight: 600 }
+                            : { backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }
+                          }
+                        >{BLOCK_LABEL[t]}</button>
+                      )
+                    })}
+                  </div>
+                  {/* Time + actions */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] shrink-0" style={{ color: 'var(--color-text-muted)' }}>Start</span>
+                    <TimeInput value={addForm.start} onChange={v => setAddForm(f => ({ ...f, start: v }))} />
+                    <span className="text-[10px] shrink-0" style={{ color: 'var(--color-text-muted)' }}>End</span>
+                    <TimeInput value={addForm.end} onChange={v => setAddForm(f => ({ ...f, end: v }))} />
+                    <div className="ml-auto flex items-center gap-1.5">
+                      <button
+                        onClick={() => { setAddForm({ ...BLOCK_DEFAULTS, type: '' }); setShowAddForm(false) }}
+                        className="px-2.5 py-1 rounded-lg text-[11px] shrink-0"
+                        style={{ color: 'var(--color-text-muted)', backgroundColor: 'rgba(15,31,28,0.06)' }}
+                      >Cancel</button>
+                      <button
+                        onClick={() => {
+                          setBlocks(prev => [...prev, {
+                            ...addForm,
+                            type: addForm.type || 'other',
+                            label: addForm.label.trim() || BLOCK_LABEL[addForm.type] || 'Block',
+                            id: Date.now(),
+                          }])
+                          setAddForm({ ...BLOCK_DEFAULTS, type: '' })
+                          setShowAddForm(false)
+                        }}
+                        className="px-3 py-1 rounded-lg text-[11px] font-semibold shrink-0 hover:opacity-90 transition-opacity"
+                        style={{ backgroundColor: 'var(--color-accent)', color: '#0A1628' }}
+                      >Add</button>
+                    </div>
+                  </div>
                 </div>
-                <input
-                  value={addForm.label}
-                  onChange={e => setAddForm(f => ({ ...f, label: e.target.value }))}
-                  placeholder={`Name (e.g. "${BLOCK_LABEL[addForm.type]}")`}
-                  className="w-full text-xs rounded-lg px-2.5 py-1.5 outline-none"
-                  style={{ border: 'var(--border)', backgroundColor: '#FFFFFF', color: 'var(--color-text)' }}
-                />
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] shrink-0" style={{ color: 'var(--color-text-muted)' }}>Start</span>
-                  <TimeInput value={addForm.start} onChange={v => setAddForm(f => ({ ...f, start: v }))} />
-                  <span className="text-[10px] shrink-0" style={{ color: 'var(--color-text-muted)' }}>End</span>
-                  <TimeInput value={addForm.end} onChange={v => setAddForm(f => ({ ...f, end: v }))} />
-                  <button
-                    onClick={() => {
-                      setBlocks(prev => [...prev, {
-                        ...addForm,
-                        label: addForm.label.trim() || BLOCK_LABEL[addForm.type],
-                        id: Date.now(),
-                      }])
-                      setAddForm({ ...BLOCK_DEFAULTS })
-                    }}
-                    className="ml-auto px-3 py-1 rounded-lg text-[11px] font-semibold shrink-0 hover:opacity-90 transition-opacity"
-                    style={{ backgroundColor: 'var(--color-accent)', color: '#0A1628' }}
-                  >+ Add</button>
-                </div>
-              </div>
+              )}
 
               {/* Best ride window */}
               {windows.length > 0 && (
@@ -1978,6 +2057,7 @@ function DailyReadiness({ seasonData, onSetupSeason, blocks, setBlocks, whoopSta
               )}
 
             </div>
+
           </div>
 
           {/* ── Step 3: Modifiers ── */}

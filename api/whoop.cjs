@@ -152,17 +152,24 @@ function mapRecovery(r) {
 }
 
 function mapSleep(s) {
-  const score = s.score ?? {}
+  const score   = s.score ?? {}
+  const stages  = score.stage_summary ?? {}
+  // v2 API dropped hours_of_sleep — compute from stage millis
+  const sleepMs = (stages.total_light_sleep_time_milli ?? 0)
+                + (stages.total_slow_wave_sleep_time_milli ?? 0)
+                + (stages.total_rem_sleep_time_milli ?? 0)
+  const hoursOfSleep = sleepMs > 0 ? +(sleepMs / 3600000).toFixed(2) : null
+
   return {
-    id:             s.id,
-    date:           isoToDateStr(s.start),
-    wakeAt:         s.end ?? null,   // ISO timestamp of when user woke up
-    nap:            s.nap ?? false,
-    hoursOfSleep:   score.hours_of_sleep ?? null,
-    efficiency:     score.sleep_efficiency_percentage ?? null,
-    performance:    score.sleep_performance_percentage ?? null,
+    id:              s.id,
+    date:            isoToDateStr(s.start),
+    wakeAt:          s.end ?? null,
+    nap:             s.nap ?? false,
+    hoursOfSleep,
+    efficiency:      score.sleep_efficiency_percentage ?? null,
+    performance:     score.sleep_performance_percentage ?? null,
     respiratoryRate: score.respiratory_rate ?? null,
-    state:          s.score_state,
+    state:           s.score_state,
   }
 }
 
@@ -308,6 +315,35 @@ async function getWhoopActivities(startDate, endDate, ftp = 295) {
   return { activities, connected: true }
 }
 
+async function getWhoopHistory(days = 180) {
+  if (!session) return { recovery: [], sleep: [], cycles: [] }
+  const end   = new Date()
+  const start = new Date(end - days * 86400000)
+  const [recoveryRecs, sleepRecs, cycleRecs] = await Promise.all([
+    fetchAll('/recovery',        { start: start.toISOString(), end: end.toISOString() }),
+    fetchAll('/activity/sleep',  { start: start.toISOString(), end: end.toISOString() }),
+    fetchAll('/cycle',           { start: start.toISOString(), end: end.toISOString() }),
+  ])
+  const recovery = recoveryRecs
+    .map(mapRecovery)
+    .filter(r => r.state === 'SCORED' && r.recoveryScore != null)
+    .sort((a, b) => a.date.localeCompare(b.date))
+  const sleep = sleepRecs
+    .map(mapSleep)
+    .filter(s => !s.nap && s.state === 'SCORED' && s.hoursOfSleep != null)
+    .sort((a, b) => a.date.localeCompare(b.date))
+  const cycles = cycleRecs
+    .filter(c => c.score_state === 'SCORED' && c.score)
+    .map(c => ({
+      date:     isoToDateStr(c.start),
+      strain:   c.score.strain   != null ? +c.score.strain.toFixed(1)                    : null,
+      calories: c.score.kilojoule != null ? Math.round(c.score.kilojoule * 0.239006)    : null,
+    }))
+    .filter(c => c.date)
+    .sort((a, b) => a.date.localeCompare(b.date))
+  return { recovery, sleep, cycles }
+}
+
 module.exports = {
   getAuthUrl,
   connectWhoop,
@@ -316,4 +352,5 @@ module.exports = {
   getLatestRecovery,
   getLatestSleep,
   getWhoopActivities,
+  getWhoopHistory,
 }
