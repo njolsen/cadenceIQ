@@ -43,6 +43,19 @@ function FlagIcon({ size = 11, color = 'currentColor' }) {
   )
 }
 
+function CalendarIcon({ size = 11, color = 'currentColor' }) {
+  const s = { stroke: color, strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' }
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      style={{ display: 'inline', flexShrink: 0, verticalAlign: 'middle', overflow: 'visible' }}>
+      <rect x="3" y="4" width="18" height="18" rx="2" style={s} />
+      <line x1="16" y1="2" x2="16" y2="6" style={s} />
+      <line x1="8" y1="2" x2="8" y2="6" style={s} />
+      <line x1="3" y1="10" x2="21" y2="10" style={s} />
+    </svg>
+  )
+}
+
 function SportIcon({ sport, type, size = 11, color }) {
   const s = (sport || type || '').toLowerCase()
   if (s.includes('cycling') || s.includes('bike') || s.includes('virtual') || s.includes('ride')) {
@@ -53,6 +66,9 @@ function SportIcon({ sport, type, size = 11, color }) {
   }
   if (s.includes('event') || s.includes('race') || s.includes('flag')) {
     return <FlagIcon size={size} color={color ?? 'currentColor'} />
+  }
+  if (s.includes('plan')) {
+    return <CalendarIcon size={size} color={color ?? 'currentColor'} />
   }
   return null
 }
@@ -176,7 +192,7 @@ function TodayRecommendation({ readinessScore, activityByDate, userWorkouts, ath
   const userBikeMins = userYest.filter(w => w.type === 'bike').reduce((s, w) => s + (w.totalMin || 0), 0)
 
   const yesterdayTSS   = Math.round(stravaTSS)
-  const hadWorkout     = stravaSecs > 0 || userBikeMins > 0 || userYest.some(w => w.type !== 'event')
+  const hadWorkout     = stravaSecs > 0 || userBikeMins > 0 || userYest.some(w => w.type !== 'event' && w.type !== 'plan')
   const isHighIntensity = yesterdayTSS > 100 ||
     stravaYest.some(a => a.est_tss && a.moving_time_s && (a.est_tss / (a.moving_time_s / 3600)) > 70)
 
@@ -199,8 +215,15 @@ function TodayRecommendation({ readinessScore, activityByDate, userWorkouts, ath
   const W = (lo, hi) => ({ lo: Math.round(ftp * lo), hi: Math.round(ftp * hi) })
   const daysToRace = nextRace?.days ?? null
 
+  const todayPlanEvent = (userWorkouts[TODAY] ?? []).find(w => w.type === 'plan')
+
   let rec
-  if (daysToRace === 0) {
+  if (todayPlanEvent) {
+    const emoji = todayPlanEvent.name === 'Travel' ? '✈️' : todayPlanEvent.name === 'Vacation' ? '🌴' : todayPlanEvent.name === 'Event' ? '🎉' : '😴'
+    rec = { type: `${emoji} ${todayPlanEvent.name}`, duration: null, zone: null, watts: null,
+      rationale: `${todayPlanEvent.name} day — take the day completely off from training. Come back fresh tomorrow.`,
+      color: '#F59E0B' }
+  } else if (daysToRace === 0) {
     rec = { type: 'Race day', duration: null, zone: null, watts: null,
       rationale: `Today is ${nextRace.name}. Rest until your start — do a short warm-up only, keep legs fresh.`,
       color: '#FF2D78' }
@@ -350,16 +373,25 @@ export default function WeeklyCalendar({
   readinessScore = 78,
   onAddCalendarEvent,
   onRemoveCalendarEvent,
+  onAddPlanEvent,
+  onRemovePlanEvent,
   scheduleBlocks = [],
   onActivitySelect,
 }) {
   const [currentMonth, setCurrentMonth] = useState({ year: 2026, month: 5 }) // June 2026
   const [showModal, setShowModal]   = useState(false)
   const [pendingEvents, setPendingEvents] = useState([])
-  const [dayModal, setDayModal] = useState(null)   // null | { date, mode: 'pick'|'bike'|'gym'|'event' }
-  const [userWorkouts, setUserWorkouts] = useState({}) // { dateStr: [workout] }
+  const [dayModal, setDayModal] = useState(null)   // null | { date, mode: 'pick'|'bike'|'gym'|'event'|'plan' }
+  const [userWorkouts, setUserWorkouts] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('ciq_user_workouts') ?? '{}') }
+    catch { return {} }
+  }) // { dateStr: [workout] }
   const [sessionOverrides, setSessionOverrides] = useState({}) // { dateStr: { ...override fields } }
   const [copiedItem, setCopiedItem] = useState(null) // item copied for paste to another day
+
+  function persist(next) {
+    try { localStorage.setItem('ciq_user_workouts', JSON.stringify(next)) } catch {}
+  }
 
   function handleUpdateSession(dateStr, updates) {
     setSessionOverrides(prev => ({ ...prev, [dateStr]: { ...(prev[dateStr] ?? {}), ...updates } }))
@@ -367,29 +399,28 @@ export default function WeeklyCalendar({
 
   function handleSaveWorkout(dateStr, workout) {
     const id = Date.now()
-    setUserWorkouts(prev => ({
-      ...prev,
-      [dateStr]: [...(prev[dateStr] ?? []), { id, ...workout }],
-    }))
+    const next = { ...userWorkouts, [dateStr]: [...(userWorkouts[dateStr] ?? []), { id, ...workout }] }
+    setUserWorkouts(next)
+    persist(next)
     if (workout.type === 'event') {
       onAddCalendarEvent?.({ id, date: dateStr, name: workout.name, distance: workout.eventType, priority: workout.priority, location: workout.location, goal: '' })
+    }
+    if (workout.type === 'plan') {
+      onAddPlanEvent?.({ id, date: dateStr, name: workout.name })
     }
   }
   function handleRemoveWorkout(dateStr, workoutId) {
     const removed = userWorkouts[dateStr]?.find(w => w.id === workoutId)
-    setUserWorkouts(prev => ({
-      ...prev,
-      [dateStr]: (prev[dateStr] ?? []).filter(w => w.id !== workoutId),
-    }))
-    if (removed?.type === 'event') {
-      onRemoveCalendarEvent?.(workoutId)
-    }
+    const next = { ...userWorkouts, [dateStr]: (userWorkouts[dateStr] ?? []).filter(w => w.id !== workoutId) }
+    setUserWorkouts(next)
+    persist(next)
+    if (removed?.type === 'event') onRemoveCalendarEvent?.(workoutId)
+    if (removed?.type === 'plan') onRemovePlanEvent?.(workoutId)
   }
   function handleUpdateWorkout(dateStr, updatedWorkout) {
-    setUserWorkouts(prev => ({
-      ...prev,
-      [dateStr]: (prev[dateStr] ?? []).map(w => w.id === updatedWorkout.id ? updatedWorkout : w),
-    }))
+    const next = { ...userWorkouts, [dateStr]: (userWorkouts[dateStr] ?? []).map(w => w.id === updatedWorkout.id ? updatedWorkout : w) }
+    setUserWorkouts(next)
+    persist(next)
   }
 
   const allEvents = [...LIFE_EVENTS, ...pendingEvents]
@@ -850,10 +881,16 @@ function MonthView({ dividerRefs, todayRowRef, allEvents, seasonData, onDaySelec
 
                             {/* User-added items — each in its own mini-box */}
                             {(userWorkouts[dateStr] ?? []).map((w, wi2) => {
-                              const color = w.type === 'gym' ? '#A78BFA' : w.type === 'event' ? '#FF2D78' : '#00C896'
-                              const bg    = w.type === 'gym' ? 'rgba(167,139,250,0.08)' : w.type === 'event' ? 'rgba(255,45,120,0.06)' : 'rgba(0,200,150,0.06)'
-                              const border = w.type === 'gym' ? 'rgba(167,139,250,0.25)' : w.type === 'event' ? 'rgba(255,45,120,0.2)' : 'rgba(0,200,150,0.2)'
-                              const label = w.name || (w.type === 'gym' ? 'Gym' : w.type === 'event' ? 'Event' : 'Ride')
+                              const color  = ITEM_TYPE_COLOR[w.type] ?? '#00C896'
+                              const bg     = w.type === 'gym'   ? 'rgba(167,139,250,0.08)'
+                                           : w.type === 'event' ? 'rgba(255,45,120,0.06)'
+                                           : w.type === 'plan'  ? 'rgba(245,158,11,0.08)'
+                                           : 'rgba(0,200,150,0.06)'
+                              const border = w.type === 'gym'   ? 'rgba(167,139,250,0.25)'
+                                           : w.type === 'event' ? 'rgba(255,45,120,0.2)'
+                                           : w.type === 'plan'  ? 'rgba(245,158,11,0.3)'
+                                           : 'rgba(0,200,150,0.2)'
+                              const label = w.name || (w.type === 'gym' ? 'Gym' : w.type === 'event' ? 'Event' : w.type === 'plan' ? 'Life Event' : 'Ride')
                               return (
                                 <div key={wi2} className="rounded-lg px-2 py-1.5 mt-1 cursor-pointer"
                                   style={{ backgroundColor: bg, border: `0.5px solid ${border}` }}
@@ -990,8 +1027,8 @@ function MonthView({ dividerRefs, todayRowRef, allEvents, seasonData, onDaySelec
 
 // ─── Day Add Modal ────────────────────────────────────────────────────────────
 
-const ITEM_TYPE_COLOR = { bike: '#00C896', gym: '#A78BFA', event: '#FF2D78' }
-const ITEM_TYPE_ICON  = { bike: '🚴', gym: '🏋️', event: '🏁' }
+const ITEM_TYPE_COLOR = { bike: '#00C896', gym: '#A78BFA', event: '#FF2D78', plan: '#F59E0B' }
+const ITEM_TYPE_ICON  = { bike: '🚴', gym: '🏋️', event: '🏁', plan: '📅' }
 
 function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWorkouts = [], onRemoveWorkout, onUpdateWorkout, plannedSession = null, sessionOverride = null, onUpdateSession, addMode = true, selectedItemId = null, copiedItem = null, onCopyItem, onPasteItem }) {
   const [editingId, setEditingId] = useState(null)
@@ -1083,6 +1120,7 @@ function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWo
                               </p>
                             )}
                             {w.type === 'event' && w.eventType && !isEditing && <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{w.eventType} · {w.priority}</p>}
+                            {w.type === 'plan' && !isEditing && <p className="text-[10px]" style={{ color: '#B45309' }}>Appears in today's schedule</p>}
                           </div>
                           {!isEditing && (
                             <div className="flex items-center gap-2">
@@ -1172,6 +1210,15 @@ function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWo
                                 <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
                                   Use the Edit button above to open the full workout builder.
                                 </p>
+                              </div>
+                            )}
+                            {w.type === 'plan' && (
+                              <div className="space-y-2 pt-2">
+                                <div>
+                                  <label className="text-[10px] uppercase tracking-wide mb-1 block" style={{ color: 'var(--color-text-muted)' }}>Name</label>
+                                  <input className="w-full text-xs rounded-lg px-2.5 py-1.5 outline-none" style={{ border: 'var(--border)', backgroundColor: '#FFFFFF' }}
+                                    value={editDraft.name || ''} onChange={e => setEditDraft({ ...editDraft, name: e.target.value })} />
+                                </div>
                               </div>
                             )}
                             {w.type === 'event' && (
@@ -1274,6 +1321,15 @@ function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWo
                       <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Add a race or event</p>
                     </div>
                   </button>
+                  <button onClick={() => onSetMode('plan')}
+                    className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-left"
+                    style={{ border: '1px solid #0A1628', backgroundColor: '#FFFFFF' }}>
+                    <span className="text-base">📅</span>
+                    <div>
+                      <p className="font-semibold text-sm">Life Event</p>
+                      <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Travel, vacation, schedule block</p>
+                    </div>
+                  </button>
                 </div>
               </>
             )}
@@ -1353,6 +1409,12 @@ function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWo
         {mode === 'event' && (
           <div className="p-5">
             <EventForm onSave={onSave} onCancel={() => onSetMode('pick')} />
+          </div>
+        )}
+
+        {mode === 'plan' && (
+          <div className="p-5">
+            <PlanForm onSave={onSave} onCancel={() => onSetMode('pick')} />
           </div>
         )}
       </div>
@@ -1806,6 +1868,51 @@ function GymForm({ onSave, onCancel, initial = null }) {
           className="flex-1 py-2.5 rounded-full text-sm font-semibold transition-opacity"
           style={{ backgroundColor: GYM_ACCENT, color: '#fff', opacity: canSave ? 1 : 0.4 }}>
           {initial ? 'Save session' : 'Add session'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── PlanForm ─────────────────────────────────────────────────────────────────
+
+const PLAN_ACCENT   = '#F59E0B'
+const PLAN_PRESETS  = ['Travel', 'Vacation', 'Event', 'Rest Day']
+
+function PlanForm({ onSave, onCancel }) {
+  const [name, setName] = useState('')
+  const canSave = name.trim().length > 0
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="font-semibold text-sm mb-0.5">All-day event</p>
+        <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Marks this as an off day — no training recommended.</p>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {PLAN_PRESETS.map(p => (
+          <button key={p} onClick={() => setName(p)}
+            className="flex items-center gap-2.5 px-4 py-3 rounded-xl text-left transition-all"
+            style={{
+              backgroundColor: name === p ? PLAN_ACCENT : 'rgba(15,31,28,0.04)',
+              border: name === p ? `1.5px solid ${PLAN_ACCENT}` : '1px solid rgba(15,31,28,0.10)',
+              color: name === p ? '#fff' : 'var(--color-text)',
+            }}>
+            <span className="text-base leading-none">
+              {p === 'Travel' ? '✈️' : p === 'Vacation' ? '🌴' : p === 'Event' ? '🎉' : '😴'}
+            </span>
+            <span className="font-semibold text-sm">{p}</span>
+          </button>
+        ))}
+      </div>
+      <div className="flex gap-2 pt-1">
+        <button onClick={onCancel}
+          className="flex-1 py-2.5 rounded-full text-sm font-medium"
+          style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text-muted)' }}>Cancel</button>
+        <button
+          onClick={() => { if (canSave) onSave({ type: 'plan', name: name.trim() }) }}
+          className="flex-1 py-2.5 rounded-full text-sm font-semibold"
+          style={{ backgroundColor: PLAN_ACCENT, color: '#fff', opacity: canSave ? 1 : 0.45 }}>
+          Add to calendar
         </button>
       </div>
     </div>

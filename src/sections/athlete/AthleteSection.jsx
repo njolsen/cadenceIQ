@@ -167,6 +167,13 @@ export default function AthleteSection() {
   const [showSeasonDateModal, setShowSeasonDateModal] = useState(false)
   const [activityByDate, setActivityByDate] = useState({})
   const [todayBlocks, setTodayBlocks]   = useState(DEFAULT_TODAY_BLOCKS)
+  const [planEvents, setPlanEvents]     = useState(() => {
+    try {
+      const todayStr = new Date().toISOString().substring(0, 10)
+      const all = JSON.parse(localStorage.getItem('ciq_user_workouts') ?? '{}')
+      return (all[todayStr] ?? []).filter(w => w.type === 'plan')
+    } catch { return [] }
+  })
   const [activityModal, setActivityModal] = useState(null) // { all: [...], primary: {...}, ... }
 
   // Whoop live data — null = not connected / not yet fetched
@@ -235,6 +242,15 @@ export default function AthleteSection() {
       ...prev,
       races: (prev.races ?? []).filter(r => r.id !== eventId),
     }))
+  }
+
+  function handleAddPlanEvent({ id, date, name }) {
+    const todayStr = new Date().toISOString().substring(0, 10)
+    if (date === todayStr) setPlanEvents(prev => [...prev, { id, name }])
+  }
+
+  function handleRemovePlanEvent(id) {
+    setPlanEvents(prev => prev.filter(e => e.id !== id))
   }
 
   const pageHeader = (
@@ -309,6 +325,8 @@ export default function AthleteSection() {
             readinessScore={whoopLive?.recovery ?? WHOOP_DATA.recovery}
             onAddCalendarEvent={handleAddCalendarEvent}
             onRemoveCalendarEvent={handleRemoveCalendarEvent}
+            onAddPlanEvent={handleAddPlanEvent}
+            onRemovePlanEvent={handleRemovePlanEvent}
             scheduleBlocks={todayBlocks}
             onActivitySelect={day => setActivityModal(day)}
           />
@@ -357,6 +375,7 @@ export default function AthleteSection() {
           onDayClick={goToCalendar}
           todayBlocks={todayBlocks}
           setTodayBlocks={setTodayBlocks}
+          planEvents={planEvents}
           whoopStatus={whoopStatus}
           whoopLive={whoopLive}
           onConnectWhoop={connectWhoop}
@@ -1554,7 +1573,7 @@ function mergeWhoopData(live) {
   }
 }
 
-function DailyReadiness({ seasonData, onSetupSeason, blocks, setBlocks, whoopStatus, whoopLive, onConnectWhoop, onDisconnectWhoop }) {
+function DailyReadiness({ seasonData, onSetupSeason, blocks, setBlocks, planEvents = [], whoopStatus, whoopLive, onConnectWhoop, onDisconnectWhoop }) {
   const whoop = mergeWhoopData(whoopLive)
 
   const [planDate, setPlanDate] = useState(localToday())
@@ -1895,6 +1914,25 @@ function DailyReadiness({ seasonData, onSetupSeason, blocks, setBlocks, whoopSta
                 )
               })()}
 
+              {/* Plan events from calendar — rendered as all-day items alongside committed blocks */}
+              {planEvents.map(e => (
+                <div key={e.id}
+                  className="flex items-center gap-2.5 px-3 py-2 rounded-xl"
+                  style={{ border: '0.5px solid rgba(245,158,11,0.28)', backgroundColor: 'rgba(245,158,11,0.06)' }}>
+                  <span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: '#F59E0B' }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="text-xs font-semibold">{e.name}</p>
+                      <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
+                        style={{ backgroundColor: 'rgba(245,158,11,0.15)', color: '#92400E', letterSpacing: '0.02em' }}>
+                        From calendar
+                      </span>
+                    </div>
+                    <p className="data-value text-[10px]" style={{ color: 'var(--color-text-muted)' }}>All day</p>
+                  </div>
+                </div>
+              ))}
+
               {/* Committed items */}
               {blocks.map(b => {
                 const dur = Math.max(0, toDec(b.end) - toDec(b.start))
@@ -2155,7 +2193,7 @@ function DailyReadiness({ seasonData, onSetupSeason, blocks, setBlocks, whoopSta
 
 
 
-function OverviewTab({ seasonData, onSetupSeason, todayBlocks, setTodayBlocks, whoopStatus, whoopLive, onConnectWhoop, onDisconnectWhoop }) {
+function OverviewTab({ seasonData, onSetupSeason, todayBlocks, setTodayBlocks, planEvents = [], whoopStatus, whoopLive, onConnectWhoop, onDisconnectWhoop }) {
   return (
     <div className="space-y-4">
       <DailyReadiness
@@ -2163,6 +2201,7 @@ function OverviewTab({ seasonData, onSetupSeason, todayBlocks, setTodayBlocks, w
         onSetupSeason={onSetupSeason}
         blocks={todayBlocks}
         setBlocks={setTodayBlocks}
+        planEvents={planEvents}
         whoopStatus={whoopStatus}
         whoopLive={whoopLive}
         onConnectWhoop={onConnectWhoop}
