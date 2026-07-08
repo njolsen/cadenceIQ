@@ -1922,26 +1922,6 @@ function PlanForm({ onSave, onCancel }) {
 
 // ─── EventForm ────────────────────────────────────────────────────────────────
 
-const CAL_BIKEREG_EVENTS = [
-  { id: 'br001', name: 'Battenkill Road Race',             date: '2026-04-11', location: 'Cambridge, NY',        eventType: 'Road Race',  distance: '62 mi',       fee: '$70',  status: 'open'     },
-  { id: 'br002', name: 'Gran Fondo New York',              date: '2026-05-17', location: 'Fort Lee, NJ',         eventType: 'Gran Fondo', distance: '100 mi',      fee: '$150', status: 'open'     },
-  { id: 'br003', name: 'Somerville Criterium',             date: '2026-05-25', location: 'Somerville, NJ',       eventType: 'Crit',       distance: '50 min + 5',  fee: '$40',  status: 'open'     },
-  { id: 'br004', name: 'Air Force Cycling Classic',        date: '2026-05-30', location: 'Arlington, VA',        eventType: 'Crit',       distance: '40 min + 5',  fee: '$35',  status: 'waitlist' },
-  { id: 'br005', name: 'Philly Bike Race',                 date: '2026-06-07', location: 'Philadelphia, PA',     eventType: 'Crit',       distance: '60 min + 5',  fee: '$45',  status: 'open'     },
-  { id: 'br006', name: 'Tour de Cure New York',            date: '2026-06-13', location: 'Saratoga Springs, NY', eventType: 'Gran Fondo', distance: '100 mi',      fee: '$55',  status: 'open'     },
-  { id: 'br007', name: 'Intelligentsia Cup',               date: '2026-07-10', location: 'Chicago, IL',          eventType: 'Crit',       distance: '8 days',      fee: '$85',  status: 'open'     },
-  { id: 'br008', name: 'Cascade Cycling Classic',          date: '2026-07-17', location: 'Bend, OR',             eventType: 'Road Race',  distance: '5-day stage', fee: '$140', status: 'open'     },
-  { id: 'br009', name: 'Louisville Criterium',             date: '2026-07-25', location: 'Louisville, KY',       eventType: 'Crit',       distance: '50 min + 5',  fee: '$38',  status: 'open'     },
-  { id: 'br010', name: 'Tour of the Catskills',            date: '2026-08-14', location: 'Arkville, NY',         eventType: 'Road Race',  distance: '85 mi',       fee: '$65',  status: 'open'     },
-  { id: 'br011', name: 'Mt. Washington Hillclimb',         date: '2026-08-22', location: 'Gorham, NH',           eventType: 'Time Trial', distance: '7.6 mi',      fee: '$80',  status: 'waitlist' },
-  { id: 'br012', name: 'Green Mountain Stage Race',        date: '2026-08-27', location: 'Burlington, VT',       eventType: 'Road Race',  distance: '4-day stage', fee: '$130', status: 'open'     },
-  { id: 'br013', name: 'Tour of Somerville',               date: '2026-09-12', location: 'Somerville, NJ',       eventType: 'Road Race',  distance: '62 mi',       fee: '$60',  status: 'open'     },
-  { id: 'br014', name: 'USA Cycling Masters TT Nationals', date: '2026-09-19', location: 'Winston-Salem, NC',    eventType: 'Time Trial', distance: '20 km',       fee: '$55',  status: 'open'     },
-  { id: 'br015', name: 'Gateway Cup',                      date: '2026-09-04', location: 'St. Louis, MO',        eventType: 'Crit',       distance: '4 days',      fee: '$80',  status: 'open'     },
-  { id: 'br016', name: 'Hincapie Gran Fondo',              date: '2026-10-03', location: 'Greenville, SC',       eventType: 'Gran Fondo', distance: '80 mi',       fee: '$95',  status: 'open'     },
-  { id: 'br017', name: 'Joe Martin Stage Race',            date: '2026-04-23', location: 'Fayetteville, AR',     eventType: 'Road Race',  distance: '4-day stage', fee: '$120', status: 'open'     },
-]
-
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA',
   'HI','ID','IL','IN','IA','KS','KY','LA','ME','MD',
@@ -1959,23 +1939,64 @@ function EventForm({ onSave, onCancel, seasonRaces = [] }) {
   const [eventType, setEventType] = useState('Road Race')
   const [priority,  setPriority]  = useState('B Race')
   const [brSearch,  setBrSearch]  = useState('')
+  const [brRegion,  setBrRegion]  = useState('All')
+  const [brEvents,  setBrEvents]  = useState([])
+  const [brLoading, setBrLoading] = useState(false)
+  const [brError,   setBrError]   = useState(null)
   const EVENT_TYPES = ['Crit', 'Road Race', 'Time Trial', 'Gran Fondo', 'Other']
   const PRIORITIES  = ['A Race', 'B Race', 'C Race']
   const canSubmit = name.trim().length > 0
   const location  = [city.trim(), stateCode].filter(Boolean).join(', ')
+  const BR_REGIONS_CAL = ['Northeast', 'New England', 'Mid Atlantic', 'Southeast', 'South Central', 'Midwest', 'Rocky Mountain', 'Northwest', 'Southwest']
+
+  useEffect(() => {
+    if (tab !== 'bikereg') return
+    let cancelled = false
+    setBrLoading(true)
+    setBrError(null)
+    const regions = brRegion === 'All' ? BR_REGIONS_CAL : [brRegion]
+    Promise.all(regions.map(r =>
+      fetch(`http://localhost:3001/api/bikereg/search?region=${encodeURIComponent(r)}`)
+        .then(res => res.ok ? res.json() : res.json().then(b => Promise.reject(b.error || 'Failed')))
+        .then(d => d.events ?? [])
+    ))
+      .then(results => {
+        if (cancelled) return
+        const seen = new Set()
+        const merged = results.flat().filter(e => { if (seen.has(e.id)) return false; seen.add(e.id); return true })
+        merged.sort((a, b) => a.date.localeCompare(b.date))
+        setBrEvents(merged)
+        setBrLoading(false)
+      })
+      .catch(e => { if (!cancelled) { setBrError(String(e)); setBrLoading(false) } })
+    return () => { cancelled = true }
+  }, [tab, brRegion])
 
   const addedNames = new Set(seasonRaces.map(r => r.name.toLowerCase()))
+  const ROAD_TYPES = new Set(['Criterium', 'Road Race'])
+  const brRawTypes = Array.from(new Set(brEvents.map(e => e.eventType)))
+  const brTypeOptions = ['All', ...Array.from(new Set(brRawTypes.map(t => ROAD_TYPES.has(t) ? 'Road' : t))).sort()]
+  const [brType, setBrType] = useState('All')
   const q = brSearch.trim().toLowerCase()
-  const brResults = CAL_BIKEREG_EVENTS
-    .filter(e => e.status !== 'closed' && (!q || e.name.toLowerCase().includes(q) || e.location.toLowerCase().includes(q)))
+  const brResults = brEvents
+    .filter(e => {
+      const matchType = brType === 'All' || (brType === 'Road' ? ROAD_TYPES.has(e.eventType) : e.eventType === brType)
+      const matchQ = !q || e.name.toLowerCase().includes(q) || e.location.toLowerCase().includes(q)
+      return matchType && matchQ
+    })
     .sort((a, b) => a.date.localeCompare(b.date))
+
+  // Map BikeReg type names to the app's EventForm type options
+  const BR_TO_APP_TYPE = {
+    Criterium: 'Crit', 'Mountain Bike': 'Other', Cyclocross: 'Other', Track: 'Other', Gravel: 'Other',
+  }
 
   function fillFromBikeReg(e) {
     const [loc, st] = e.location.split(', ')
     setName(e.name)
     setCity(loc ?? '')
     setStateCode(st ?? '')
-    setEventType(e.eventType === 'Gran Fondo' ? 'Other' : e.eventType)
+    setEventType(BR_TO_APP_TYPE[e.eventType] ?? e.eventType)
     setTab('manual')
   }
 
@@ -2006,6 +2027,16 @@ function EventForm({ onSave, onCancel, seasonRaces = [] }) {
       {/* BikeReg search panel */}
       {tab === 'bikereg' && (
         <div className="space-y-2">
+          {/* Region pills */}
+          <div className="flex gap-1 flex-wrap">
+            {['All','Northeast','New England','Mid Atlantic','Southeast','South Central','Midwest','Rocky Mountain','Northwest','Southwest'].map(r => (
+              <button key={r} onClick={() => setBrRegion(r)}
+                className="px-2 py-0.5 rounded-full text-[9px] font-medium transition-all"
+                style={{ backgroundColor: brRegion === r ? '#0A1628' : 'rgba(15,31,28,0.06)', color: brRegion === r ? '#fff' : 'var(--color-text-muted)' }}>
+                {r}
+              </button>
+            ))}
+          </div>
           <input
             className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
             style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }}
@@ -2013,14 +2044,35 @@ function EventForm({ onSave, onCancel, seasonRaces = [] }) {
             value={brSearch} onChange={e => setBrSearch(e.target.value)}
             autoFocus
           />
-          <div className="space-y-1.5 max-h-60 overflow-y-auto pr-0.5">
-            {brResults.length === 0 && (
+          {/* Type filter pills — derived from loaded events */}
+          {brTypeOptions.length > 1 && (
+            <div className="flex gap-1 flex-wrap">
+              {brTypeOptions.map(t => (
+                <button key={t} onClick={() => setBrType(t)}
+                  className="px-2 py-0.5 rounded-full text-[9px] font-medium transition-all"
+                  style={{ backgroundColor: brType === t ? '#0A1628' : 'rgba(15,31,28,0.06)', color: brType === t ? '#fff' : 'var(--color-text-muted)' }}>
+                  {t}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="space-y-1.5 max-h-52 overflow-y-auto pr-0.5">
+            {brLoading && (
+              <div className="flex items-center justify-center gap-2 py-6">
+                <div className="w-4 h-4 rounded-full border-2 animate-spin"
+                  style={{ borderColor: 'rgba(15,31,28,0.1)', borderTopColor: '#0A1628' }} />
+                <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Loading…</span>
+              </div>
+            )}
+            {!brLoading && brError && (
+              <p className="text-xs text-center py-4" style={{ color: '#E85555' }}>Could not load events. Is the API server running?</p>
+            )}
+            {!brLoading && !brError && brResults.length === 0 && (
               <p className="text-xs text-center py-4" style={{ color: 'var(--color-text-muted)' }}>No events found.</p>
             )}
-            {brResults.map(e => {
+            {!brLoading && !brError && brResults.map(e => {
               const isAdded = addedNames.has(e.name.toLowerCase())
               const d = new Date(e.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-              const statusColor = e.status === 'waitlist' ? '#F5A623' : '#00C896'
               return (
                 <div key={e.id}
                   className="rounded-xl px-3 py-2.5 flex items-start justify-between gap-2"
@@ -2028,7 +2080,7 @@ function EventForm({ onSave, onCancel, seasonRaces = [] }) {
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-xs leading-tight truncate">{e.name}</p>
                     <p className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
-                      {d} · {e.eventType} · <span style={{ color: statusColor }}>{e.status === 'waitlist' ? 'Waitlist' : 'Open'}</span>
+                      {d} · {e.eventType}
                     </p>
                     <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>📍 {e.location}</p>
                   </div>

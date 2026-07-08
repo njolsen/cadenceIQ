@@ -527,26 +527,7 @@ export function SeasonArc({ seasonData, onEditDates, onSetupSeason, onRaceClick 
 const EVENT_TYPES = ['Crit', 'Road Race', 'Time Trial', 'Gran Fondo', 'Other']
 const PRIORITIES  = ['A Race', 'B Race', 'C Race']
 
-const BIKEREG_EVENTS = [
-  { id: 'br001', name: 'Battenkill Road Race',             date: '2026-04-11', location: 'Cambridge, NY',        eventType: 'Road Race',  distance: '62 mi',       fee: '$70',  status: 'open',     url: 'https://www.bikereg.com/battenkill-road-race'           },
-  { id: 'br002', name: 'Gran Fondo New York',              date: '2026-05-17', location: 'Fort Lee, NJ',         eventType: 'Gran Fondo', distance: '100 mi',      fee: '$150', status: 'open',     url: 'https://www.bikereg.com/gran-fondo-new-york'            },
-  { id: 'br003', name: 'Somerville Criterium',             date: '2026-05-25', location: 'Somerville, NJ',       eventType: 'Crit',       distance: '50 min + 5',  fee: '$40',  status: 'open',     url: 'https://www.bikereg.com/somerville-criterium'           },
-  { id: 'br004', name: 'Air Force Cycling Classic',        date: '2026-05-30', location: 'Arlington, VA',        eventType: 'Crit',       distance: '40 min + 5',  fee: '$35',  status: 'waitlist', url: 'https://www.bikereg.com/air-force-cycling-classic'      },
-  { id: 'br005', name: 'Philly Bike Race',                 date: '2026-06-07', location: 'Philadelphia, PA',     eventType: 'Crit',       distance: '60 min + 5',  fee: '$45',  status: 'open',     url: 'https://www.bikereg.com/philly-bike-race'               },
-  { id: 'br006', name: 'Tour de Cure New York',            date: '2026-06-13', location: 'Saratoga Springs, NY', eventType: 'Gran Fondo', distance: '100 mi',      fee: '$55',  status: 'open',     url: 'https://www.bikereg.com/tour-de-cure-new-york'          },
-  { id: 'br007', name: 'Intelligentsia Cup',               date: '2026-07-10', location: 'Chicago, IL',          eventType: 'Crit',       distance: '8 days',      fee: '$85',  status: 'open',     url: 'https://www.bikereg.com/intelligentsia-cup'             },
-  { id: 'br008', name: 'Cascade Cycling Classic',          date: '2026-07-17', location: 'Bend, OR',             eventType: 'Road Race',  distance: '5-day stage', fee: '$140', status: 'open',     url: 'https://www.bikereg.com/cascade-cycling-classic'        },
-  { id: 'br009', name: 'Louisville Criterium',             date: '2026-07-25', location: 'Louisville, KY',       eventType: 'Crit',       distance: '50 min + 5',  fee: '$38',  status: 'open',     url: 'https://www.bikereg.com/louisville-criterium'           },
-  { id: 'br010', name: 'Tour of the Catskills',            date: '2026-08-14', location: 'Arkville, NY',         eventType: 'Road Race',  distance: '85 mi',       fee: '$65',  status: 'open',     url: 'https://www.bikereg.com/tour-of-the-catskills'          },
-  { id: 'br011', name: 'Mt. Washington Hillclimb',         date: '2026-08-22', location: 'Gorham, NH',           eventType: 'Time Trial', distance: '7.6 mi',      fee: '$80',  status: 'waitlist', url: 'https://www.bikereg.com/mt-washington-hillclimb'        },
-  { id: 'br012', name: 'Green Mountain Stage Race',        date: '2026-08-27', location: 'Burlington, VT',       eventType: 'Road Race',  distance: '4-day stage', fee: '$130', status: 'open',     url: 'https://www.bikereg.com/green-mountain-stage-race'      },
-  { id: 'br013', name: 'Tour of Somerville',               date: '2026-09-12', location: 'Somerville, NJ',       eventType: 'Road Race',  distance: '62 mi',       fee: '$60',  status: 'open',     url: 'https://www.bikereg.com/tour-of-somerville'             },
-  { id: 'br014', name: 'USA Cycling Masters TT Nationals', date: '2026-09-19', location: 'Winston-Salem, NC',    eventType: 'Time Trial', distance: '20 km',       fee: '$55',  status: 'open',     url: 'https://www.bikereg.com/usa-cycling-masters-tt'         },
-  { id: 'br015', name: 'Gateway Cup',                      date: '2026-09-04', location: 'St. Louis, MO',        eventType: 'Crit',       distance: '4 days',      fee: '$80',  status: 'open',     url: 'https://www.bikereg.com/gateway-cup'                    },
-  { id: 'br016', name: 'Hincapie Gran Fondo',              date: '2026-10-03', location: 'Greenville, SC',       eventType: 'Gran Fondo', distance: '80 mi',       fee: '$95',  status: 'open',     url: 'https://www.bikereg.com/hincapie-gran-fondo'            },
-  { id: 'br017', name: 'Joe Martin Stage Race',            date: '2026-04-23', location: 'Fayetteville, AR',     eventType: 'Road Race',  distance: '4-day stage', fee: '$120', status: 'open',     url: 'https://www.bikereg.com/joe-martin-stage-race'          },
-  { id: 'br018', name: 'Valley of the Sun Stage Race',     date: '2026-02-19', location: 'Glendale, AZ',         eventType: 'Road Race',  distance: '3-day stage', fee: '$100', status: 'closed',   url: 'https://www.bikereg.com/valley-of-the-sun-stage-race'   },
-]
+const BR_REGIONS = ['Northeast', 'New England', 'Mid Atlantic', 'Southeast', 'South Central', 'Midwest', 'Rocky Mountain', 'Northwest', 'Southwest']
 
 function SeasonViewModal({ season, races, onClose, onSaveDates, onAddRace, onRemoveRace, onUpdateRace }) {
   const [activeTab, setActiveTab] = useState('my_races')
@@ -558,8 +539,35 @@ function SeasonViewModal({ season, races, onClose, onSaveDates, onAddRace, onRem
   // BikeReg browser state
   const [brSearch,      setBrSearch]      = useState('')
   const [brType,        setBrType]        = useState('All')
+  const [brRegion,      setBrRegion]      = useState('All')
+  const [brEvents,      setBrEvents]      = useState([])
+  const [brLoading,     setBrLoading]     = useState(false)
+  const [brError,       setBrError]       = useState(null)
   const [pendingAddId,  setPendingAddId]  = useState(null)
   const [pendingPri,    setPendingPri]    = useState('B Race')
+
+  useEffect(() => {
+    if (activeTab !== 'find_races') return
+    let cancelled = false
+    setBrLoading(true)
+    setBrError(null)
+    const regions = brRegion === 'All' ? BR_REGIONS : [brRegion]
+    Promise.all(regions.map(r =>
+      fetch(`http://localhost:3001/api/bikereg/search?region=${encodeURIComponent(r)}`)
+        .then(res => res.ok ? res.json() : res.json().then(b => Promise.reject(b.error || 'Failed')))
+        .then(d => d.events ?? [])
+    ))
+      .then(results => {
+        if (cancelled) return
+        const seen = new Set()
+        const merged = results.flat().filter(e => { if (seen.has(e.id)) return false; seen.add(e.id); return true })
+        merged.sort((a, b) => a.date.localeCompare(b.date))
+        setBrEvents(merged)
+        setBrLoading(false)
+      })
+      .catch(e => { if (!cancelled) { setBrError(String(e)); setBrLoading(false) } })
+    return () => { cancelled = true }
+  }, [activeTab, brRegion])
 
   // New event form state
   const [adding,    setAdding]    = useState(false)
@@ -586,12 +594,13 @@ function SeasonViewModal({ season, races, onClose, onSaveDates, onAddRace, onRem
   const sortedRaces = [...races].sort((a, b) => a.date.localeCompare(b.date))
 
   const addedNames = new Set(races.map(r => r.name.toLowerCase()))
-  const brTypeOptions = ['All', ...EVENT_TYPES]
+  const ROAD_TYPES = new Set(['Criterium', 'Road Race'])
+  const rawTypes = Array.from(new Set(brEvents.map(e => e.eventType)))
+  const brTypeOptions = ['All', ...Array.from(new Set(rawTypes.map(t => ROAD_TYPES.has(t) ? 'Road' : t))).sort()]
   const todayIso = localToday()
-  const filteredBR = BIKEREG_EVENTS.filter(e => {
-    if (e.status === 'closed') return false
-    if (e.date < todayIso) return false
-    const matchType   = brType === 'All' || e.eventType === brType
+  const filteredBR = brEvents.filter(e => {
+    if (!e.date || e.date < todayIso) return false
+    const matchType   = brType === 'All' || (brType === 'Road' ? ROAD_TYPES.has(e.eventType) : e.eventType === brType)
     const q = brSearch.trim().toLowerCase()
     const matchSearch = !q || e.name.toLowerCase().includes(q) || e.location.toLowerCase().includes(q)
     return matchType && matchSearch
@@ -687,8 +696,21 @@ function SeasonViewModal({ season, races, onClose, onSaveDates, onAddRace, onRem
         {/* Find Races tab — BikeReg explorer */}
         {activeTab === 'find_races' && (
           <div className="flex-1 overflow-y-auto flex flex-col">
-            {/* Search + filter */}
-            <div className="px-4 pt-4 pb-3 shrink-0 space-y-3" style={{ borderBottom: 'var(--border)' }}>
+            {/* Region + Search + filter */}
+            <div className="px-4 pt-4 pb-3 shrink-0 space-y-2.5" style={{ borderBottom: 'var(--border)' }}>
+              {/* Region selector */}
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] shrink-0" style={{ color: 'var(--color-text-muted)' }}>Region</span>
+                <div className="flex gap-1.5 flex-wrap flex-1">
+                  {['All', ...BR_REGIONS].map(r => (
+                    <button key={r} onClick={() => setBrRegion(r)}
+                      className="px-2 py-0.5 rounded-full text-[10px] font-medium transition-all"
+                      style={{ backgroundColor: brRegion === r ? '#0A1628' : 'rgba(15,31,28,0.06)', color: brRegion === r ? '#fff' : 'var(--color-text-muted)' }}>
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <input
                 className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
                 style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }}
@@ -709,16 +731,27 @@ function SeasonViewModal({ season, races, onClose, onSaveDates, onAddRace, onRem
 
             {/* Event list */}
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
-              {filteredBR.length === 0 && (
+              {brLoading && (
+                <div className="flex flex-col items-center py-10 gap-2">
+                  <div className="w-5 h-5 rounded-full border-2 animate-spin"
+                    style={{ borderColor: 'rgba(15,31,28,0.1)', borderTopColor: '#0A1628' }} />
+                  <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Loading from BikeReg…</p>
+                </div>
+              )}
+              {!brLoading && brError && (
+                <div className="text-center py-8">
+                  <p className="text-xs font-medium" style={{ color: '#E85555' }}>Could not load events</p>
+                  <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-muted)' }}>Make sure the API server is running</p>
+                </div>
+              )}
+              {!brLoading && !brError && filteredBR.length === 0 && (
                 <p className="text-xs text-center py-8" style={{ color: 'var(--color-text-muted)' }}>No events match your search.</p>
               )}
-              {filteredBR.map(e => {
+              {!brLoading && !brError && filteredBR.map(e => {
                 const isAdded   = addedNames.has(e.name.toLowerCase())
                 const isPending = pendingAddId === e.id
                 const d = new Date(e.date + 'T12:00:00')
                 const dateStr   = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                const statusColor = e.status === 'waitlist' ? '#F5A623' : '#00C896'
-                const statusLabel = e.status === 'waitlist' ? 'Waitlist' : 'Open'
                 return (
                   <div key={e.id} className="rounded-xl px-3 py-3"
                     style={{ border: isPending ? '1px solid #0A1628' : 'var(--border)', backgroundColor: '#FFFFFF', boxShadow: '0 1px 4px rgba(15,31,28,0.05)' }}>
@@ -774,12 +807,22 @@ function SeasonViewModal({ season, races, onClose, onSaveDates, onAddRace, onRem
                       <span className="data-value text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{dateStr}</span>
                       <span style={{ color: 'var(--color-text-muted)', fontSize: 10 }}>·</span>
                       <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{e.eventType}</span>
-                      <span style={{ color: 'var(--color-text-muted)', fontSize: 10 }}>·</span>
-                      <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{e.distance}</span>
-                      <span style={{ color: 'var(--color-text-muted)', fontSize: 10 }}>·</span>
-                      <span className="text-[10px] font-medium" style={{ color: statusColor }}>{statusLabel}</span>
-                      <span style={{ color: 'var(--color-text-muted)', fontSize: 10 }}>·</span>
-                      <span className="data-value text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{e.fee}</span>
+                      {e.isSeries && (
+                        <>
+                          <span style={{ color: 'var(--color-text-muted)', fontSize: 10 }}>·</span>
+                          <span className="text-[9px] font-semibold px-1.5 py-px rounded"
+                            style={{ backgroundColor: 'rgba(99,112,104,0.1)', color: 'var(--color-text-muted)', letterSpacing: '0.03em' }}>
+                            SERIES
+                          </span>
+                        </>
+                      )}
+                      {e.url && (
+                        <>
+                          <span style={{ color: 'var(--color-text-muted)', fontSize: 10 }}>·</span>
+                          <a href={e.url} target="_blank" rel="noopener noreferrer"
+                            className="text-[10px] font-medium" style={{ color: '#FF6B00' }}>bikereg.com →</a>
+                        </>
+                      )}
                     </div>
                   </div>
                 )
@@ -852,23 +895,34 @@ function SeasonViewModal({ season, races, onClose, onSaveDates, onAddRace, onRem
                             📍 {r.location}
                           </span>
                         )}
+                        {/* Registration status badge */}
+                        {r.registered ? (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                            style={{ backgroundColor: 'rgba(0,200,150,0.08)', color: '#00C896', border: '1px solid rgba(0,200,150,0.2)' }}>
+                            ✓ Registered
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                            style={{ backgroundColor: 'rgba(245,158,11,0.1)', color: '#D97706', border: '1px solid rgba(245,158,11,0.25)' }}>
+                            ⚠ Not Registered
+                          </span>
+                        )}
                       </div>
                       {/* Date + countdown */}
                       <div className="flex items-center justify-between mb-2.5">
                         <span className="data-value text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{dateLabel}</span>
                         <span className="data-value text-[11px] font-semibold" style={{ color: countdown.color }}>{countdown.text}</span>
                       </div>
-                      {/* Registration row */}
+                      {/* Registration action row */}
                       <div className="flex items-center justify-between pt-2.5" style={{ borderTop: 'var(--border)' }}>
                         <button
                           onClick={() => onUpdateRace({ id: r.id, registered: !r.registered })}
                           className="flex items-center gap-1.5 text-[11px] font-medium rounded-full px-2.5 py-1 transition-all"
                           style={{
-                            backgroundColor: r.registered ? 'rgba(0,200,150,0.1)' : 'rgba(15,31,28,0.05)',
-                            color: r.registered ? '#00C896' : 'var(--color-text-muted)',
+                            backgroundColor: r.registered ? 'rgba(0,200,150,0.08)' : 'rgba(245,158,11,0.08)',
+                            color: r.registered ? '#00C896' : '#D97706',
                           }}>
-                          <span>{r.registered ? '✓' : '○'}</span>
-                          <span>{r.registered ? 'Registered' : 'Not registered'}</span>
+                          <span>{r.registered ? '✓ Mark unregistered' : '○ Mark as registered'}</span>
                         </button>
                         {r.url && !r.registered && (
                           <a href={r.url} target="_blank" rel="noopener noreferrer"

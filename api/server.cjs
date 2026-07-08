@@ -2,8 +2,9 @@
 
 require('dotenv').config()
 
-const express = require('express')
-const cors    = require('cors')
+const express   = require('express')
+const cors      = require('cors')
+const fetch     = require('node-fetch')
 const { getZwiftActivities }                                                        = require('./zwift.cjs')
 const { connectGarmin, getGarminStatus, disconnectGarmin, getGarminActivities }    = require('./garmin.cjs')
 const { getAuthUrl, connectWhoop, getWhoopStatus, disconnectWhoop,
@@ -160,6 +161,93 @@ app.get('/api/whoop/history', async (req, res) => {
   } catch (err) {
     console.error('/api/whoop/history error:', err.message)
     res.json({ recovery: [], sleep: [] })
+  }
+})
+
+// ─── BikeReg ───────────────────────────────────────────────────────────────────
+
+const BIKEREG_CACHE     = new Map()
+const BIKEREG_CACHE_TTL = 30 * 60 * 1000
+
+const CYCLING_TYPES = new Set([
+  'Road Race', 'Criterium', 'Time Trial', 'Gran Fondo',
+  'Mountain Bike', 'Cyclocross', 'Track', 'Gravel',
+])
+
+// Priority order: more specific types win over generic Road Race
+const TYPE_PRIORITY = [
+  'Criterium', 'Time Trial', 'Cyclocross', 'Gran Fondo',
+  'Gravel', 'Mountain Bike', 'Track', 'Road Race',
+]
+
+function parseNetDate(d) {
+  const m = (d ?? '').match(/\/Date\((\d+)/)
+  return m ? new Date(parseInt(m[1])).toISOString().substring(0, 10) : null
+}
+
+function mapEventType(types) {
+  if (!types?.length) return 'Other'
+  for (const t of TYPE_PRIORITY) {
+    if (types.includes(t)) return t
+  }
+  return CYCLING_TYPES.has(types[0]) ? types[0] : 'Other'
+}
+
+function seriesDates(e) {
+  const startStr = parseNetDate(e.EventDate)
+  const endStr   = parseNetDate(e.EventEndDate)
+  if (!endStr || startStr === endStr) return null   // single-day event
+
+  // Collect unique race dates from all category slots
+  const dateSet = new Set()
+  for (const cat of e.Categories ?? []) {
+    for (const d of cat.CategoryDates ?? []) {
+      const p = parseNetDate(d)
+      if (p) dateSet.add(p)
+    }
+  }
+  const dates = Array.from(dateSet).sort()
+  return dates.length > 1 ? dates : null  // only expand if we got real individual dates
+}
+
+app.get('/api/bikereg/search', async (req, res) => {
+  const region = (req.query.region || 'Northeast').trim()
+  const cached = BIKEREG_CACHE.get(region)
+  if (cached && Date.now() - cached.ts < BIKEREG_CACHE_TTL) {
+    return res.json(cached.data)
+  }
+  try {
+    const url  = `https://www.bikereg.com/api/search?region=${encodeURIComponent(region)}&format=json`
+    const resp = await fetch(url)
+    if (!resp.ok) throw new Error(`BikeReg returned ${resp.status}`)
+    const raw  = await resp.json()
+
+    const events = []
+    for (const e of raw.MatchingEvents ?? []) {
+      if (!e.EventTypes?.some(t => CYCLING_TYPES.has(t))) continue
+      const base = {
+        name:      e.EventName,
+        location:  [e.EventCity, e.EventState].filter(Boolean).join(', '),
+        eventType: mapEventType(e.EventTypes),
+        url:       e.EventUrl || (e.EventPermalink ? `https://www.bikereg.com${e.EventPermalink}` : null),
+        status:    'open',
+      }
+      const dates = seriesDates(e)
+      if (dates) {
+        dates.forEach((date, i) => events.push({ ...base, id: `${e.EventId}-${i}`, date, isSeries: true, seriesTotal: dates.length }))
+      } else {
+        const date = parseNetDate(e.EventDate)
+        if (date) events.push({ ...base, id: String(e.EventId), date })
+      }
+    }
+
+    events.sort((a, b) => a.date.localeCompare(b.date))
+    const result = { events, region }
+    BIKEREG_CACHE.set(region, { data: result, ts: Date.now() })
+    res.json(result)
+  } catch (err) {
+    console.error('/api/bikereg/search error:', err.message)
+    res.status(500).json({ error: err.message })
   }
 })
 
