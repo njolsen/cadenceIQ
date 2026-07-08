@@ -6,8 +6,7 @@ import Avatar from '../Avatar'
 const NAV_ITEMS = [
   { to: '/athlete',   label: 'Athlete' },
   { to: '/social',    label: 'Social' },
-  { to: '/equipment', label: 'Equipment' },
-  { to: '/analytics', label: 'Analytics' },
+  { to: '/equipment', label: 'My Garage' },
 ]
 
 // ─── Profile Drawer ────────────────────────────────────────────────────────────

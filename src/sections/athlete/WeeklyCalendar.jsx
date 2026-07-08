@@ -1,7 +1,82 @@
 import { useState, useRef, useEffect } from 'react'
 import { SeasonArc } from './AthleteSection'
 
-const TODAY = new Date().toISOString().slice(0, 10)
+function BikeIcon({ size = 11, color = 'currentColor' }) {
+  const s = { stroke: color }
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline', flexShrink: 0, verticalAlign: 'middle', overflow: 'visible' }}>
+      <circle cx="6" cy="17" r="4.5" style={{ ...s, strokeWidth: 2 }}/>
+      <circle cx="18" cy="17" r="4.5" style={{ ...s, strokeWidth: 2 }}/>
+      <path d="M6,17 L11,17 L8.5,9 L6,17" style={{ fill: color, stroke: color, strokeWidth: 0.5 }}/>
+      <line x1="8.5" y1="9" x2="16" y2="9" style={{ ...s, strokeWidth: 2 }}/>
+      <line x1="11" y1="17" x2="17" y2="12" style={{ ...s, strokeWidth: 2 }}/>
+      <line x1="17" y1="12" x2="18" y2="17" style={{ ...s, strokeWidth: 2 }}/>
+      <line x1="8.5" y1="9" x2="8.5" y2="6" style={{ ...s, strokeWidth: 2 }}/>
+      <line x1="6" y1="6" x2="11" y2="6" style={{ ...s, strokeWidth: 2 }}/>
+      <line x1="16" y1="9" x2="16" y2="6" style={{ ...s, strokeWidth: 2 }}/>
+      <line x1="14" y1="6" x2="19" y2="6" style={{ ...s, strokeWidth: 2 }}/>
+    </svg>
+  )
+}
+
+function DumbbellIcon({ size = 11, color = 'currentColor' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" style={{ display: 'inline', flexShrink: 0, verticalAlign: 'middle', fill: color }}>
+      <rect x="1" y="7" width="3" height="6" rx="1"/>
+      <rect x="4" y="8.5" width="4" height="3" rx="0.5"/>
+      <rect x="8" y="9" width="4" height="2" rx="0.5"/>
+      <rect x="12" y="8.5" width="4" height="3" rx="0.5"/>
+      <rect x="16" y="7" width="3" height="6" rx="1"/>
+    </svg>
+  )
+}
+
+function FlagIcon({ size = 11, color = 'currentColor' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" style={{ display: 'inline', flexShrink: 0, verticalAlign: 'middle', fill: color }}>
+      <rect x="3" y="2" width="2" height="16" rx="1"/>
+      <path d="M5 2 L17 2 L17 10 L5 10 Z"/>
+      <rect x="5" y="2" width="4" height="4" style={{ fill: 'white' }}/>
+      <rect x="9" y="6" width="4" height="4" style={{ fill: 'white' }}/>
+      <rect x="13" y="2" width="4" height="4" style={{ fill: 'white' }}/>
+    </svg>
+  )
+}
+
+function CalendarIcon({ size = 11, color = 'currentColor' }) {
+  const s = { stroke: color, strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' }
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      style={{ display: 'inline', flexShrink: 0, verticalAlign: 'middle', overflow: 'visible' }}>
+      <rect x="3" y="4" width="18" height="18" rx="2" style={s} />
+      <line x1="16" y1="2" x2="16" y2="6" style={s} />
+      <line x1="8" y1="2" x2="8" y2="6" style={s} />
+      <line x1="3" y1="10" x2="21" y2="10" style={s} />
+    </svg>
+  )
+}
+
+function SportIcon({ sport, type, size = 11, color }) {
+  const s = (sport || type || '').toLowerCase()
+  if (s.includes('cycling') || s.includes('bike') || s.includes('virtual') || s.includes('ride')) {
+    return <BikeIcon size={size} color={color ?? 'currentColor'} />
+  }
+  if (s.includes('gym') || s.includes('strength') || s.includes('weight')) {
+    return <DumbbellIcon size={size} color={color ?? 'currentColor'} />
+  }
+  if (s.includes('event') || s.includes('race') || s.includes('flag')) {
+    return <FlagIcon size={size} color={color ?? 'currentColor'} />
+  }
+  if (s.includes('plan')) {
+    return <CalendarIcon size={size} color={color ?? 'currentColor'} />
+  }
+  return null
+}
+
+function localIso(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+const TODAY = localIso()
 
 // ─── Training plan data ───────────────────────────────────────────────────────
 // Full June 2026 training plan — keyed by ISO date string
@@ -104,7 +179,7 @@ const WO_ZONES = ['Z1','Z2','Z3','Z3–4','Z4','Z4–5','Z5']
 
 // ─── Today's workout recommendation ──────────────────────────────────────────
 
-function TodayRecommendation({ readinessScore, activityByDate, userWorkouts, athleteFtp, seasonData }) {
+function TodayRecommendation({ readinessScore, activityByDate, userWorkouts, athleteFtp, seasonData, scheduleBlocks = [] }) {
   const d = new Date(TODAY + 'T12:00:00')
   d.setDate(d.getDate() - 1)
   const yesterdayStr = isoDate(d)
@@ -117,7 +192,7 @@ function TodayRecommendation({ readinessScore, activityByDate, userWorkouts, ath
   const userBikeMins = userYest.filter(w => w.type === 'bike').reduce((s, w) => s + (w.totalMin || 0), 0)
 
   const yesterdayTSS   = Math.round(stravaTSS)
-  const hadWorkout     = stravaSecs > 0 || userBikeMins > 0 || userYest.some(w => w.type !== 'event')
+  const hadWorkout     = stravaSecs > 0 || userBikeMins > 0 || userYest.some(w => w.type !== 'event' && w.type !== 'plan')
   const isHighIntensity = yesterdayTSS > 100 ||
     stravaYest.some(a => a.est_tss && a.moving_time_s && (a.est_tss / (a.moving_time_s / 3600)) > 70)
 
@@ -140,8 +215,15 @@ function TodayRecommendation({ readinessScore, activityByDate, userWorkouts, ath
   const W = (lo, hi) => ({ lo: Math.round(ftp * lo), hi: Math.round(ftp * hi) })
   const daysToRace = nextRace?.days ?? null
 
+  const todayPlanEvent = (userWorkouts[TODAY] ?? []).find(w => w.type === 'plan')
+
   let rec
-  if (daysToRace === 0) {
+  if (todayPlanEvent) {
+    const emoji = todayPlanEvent.name === 'Travel' ? '✈️' : todayPlanEvent.name === 'Vacation' ? '🌴' : todayPlanEvent.name === 'Event' ? '🎉' : '😴'
+    rec = { type: `${emoji} ${todayPlanEvent.name}`, duration: null, zone: null, watts: null,
+      rationale: `${todayPlanEvent.name} day — take the day completely off from training. Come back fresh tomorrow.`,
+      color: '#F59E0B' }
+  } else if (daysToRace === 0) {
     rec = { type: 'Race day', duration: null, zone: null, watts: null,
       rationale: `Today is ${nextRace.name}. Rest until your start — do a short warm-up only, keep legs fresh.`,
       color: '#FF2D78' }
@@ -195,50 +277,68 @@ function TodayRecommendation({ readinessScore, activityByDate, userWorkouts, ath
           color: '#00C896' }
   }
 
+  // Compute largest free training window from today's schedule blocks
+  if (scheduleBlocks.length > 0 && rec.type !== 'Race day' && rec.type !== 'Race openers') {
+    const tD = s => { const [h, m] = (s || '00:00').split(':').map(Number); return h + m / 60 }
+    const wakeH = tD('05:32'), bedH = tD('21:30')
+    const busy = scheduleBlocks
+      .map(b => ({ start: tD(b.start), end: tD(b.end) }))
+      .filter(b => b.end > b.start)
+      .sort((a, z) => a.start - z.start)
+    let cur = wakeH, bestGap = 0
+    for (const blk of busy) {
+      if (blk.start > cur + 0.25) bestGap = Math.max(bestGap, blk.start - cur)
+      cur = Math.max(cur, blk.end)
+    }
+    if (bedH > cur + 0.25) bestGap = Math.max(bestGap, bedH - cur)
+    const avail = bestGap
+    if (avail < 0.75 && rec.type !== 'Rest day') {
+      rec = { type: 'No time today', duration: null, zone: null, color: 'var(--color-text-muted)',
+        rationale: `Only ${Math.round(avail * 60)} min gap in today's schedule. Log it as a rest day.` }
+    } else if (avail < 1.25 && !['Rest day', 'No time today', 'Easy spin · 45–60 min'].includes(rec.type)) {
+      rec = { ...rec, duration: '45–60 min', zone: 'Z1–Z2',
+        rationale: `${rec.rationale} Schedule only allows ~${avail.toFixed(1)}h today.` }
+    } else if (avail < 2 && rec.duration && (rec.duration.includes('2h') || rec.duration.includes('3h'))) {
+      rec = { ...rec, duration: `${Math.floor(avail)}h ${Math.round((avail % 1) * 60)}m max`,
+        rationale: `${rec.rationale} Capped to your ${avail.toFixed(1)}h window today.` }
+    }
+  }
+
   const rColor = readinessScore >= 75 ? '#00C896' : readinessScore >= 50 ? '#F5A623' : '#E85555'
   const rBg    = readinessScore >= 75 ? 'rgba(0,200,150,0.10)' : readinessScore >= 50 ? 'rgba(245,166,35,0.10)' : 'rgba(232,85,85,0.10)'
 
   return (
-    <div className="px-6 py-4" style={{ borderBottom: 'var(--border)' }}>
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2.5">
-          <span className="section-title">Today's Recommendation</span>
-          <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
-            Yesterday: {yesterdayLabel}
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>Readiness</span>
-          <span className="data-value text-xs font-bold px-2 py-0.5 rounded-full"
-            style={{ backgroundColor: rBg, color: rColor }}>
-            {readinessScore}
-          </span>
-        </div>
+    <div className="flex items-center gap-4 w-full min-w-0">
+
+      {/* Yesterday */}
+      <div className="flex items-center gap-2 shrink-0">
+        <span className="text-[9px] font-medium uppercase tracking-widest"
+          style={{ color: 'rgba(15,31,28,0.28)' }}>Yesterday</span>
+        <span className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>{yesterdayLabel}</span>
       </div>
-      <div className="flex items-start gap-3 rounded-xl px-4 py-3"
-        style={{ backgroundColor: `${rec.color}12`, border: `0.5px solid ${rec.color}40` }}>
-        <span className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: rec.color }} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className="text-sm font-semibold">{rec.type}</span>
-            {rec.duration && (
-              <span className="data-value text-xs" style={{ color: 'var(--color-text-muted)' }}>{rec.duration}</span>
-            )}
-            {rec.zone && (
-              <span className="data-value text-[11px] font-medium px-1.5 py-0.5 rounded-md"
-                style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}>
-                {rec.zone}
-              </span>
-            )}
-            {rec.watts && (
-              <span className="data-value text-xs font-semibold" style={{ color: rec.color }}>
-                {rec.watts.lo}–{rec.watts.hi}W
-              </span>
-            )}
-          </div>
-          <p className="text-xs leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>{rec.rationale}</p>
-        </div>
+
+      {/* Thin vertical rule */}
+      <div className="shrink-0 w-px h-3.5 rounded-full" style={{ backgroundColor: 'rgba(15,31,28,0.13)' }} />
+
+      {/* Today */}
+      <div className="flex items-center gap-2.5 flex-1 min-w-0">
+        <span className="text-[9px] font-medium uppercase tracking-widest shrink-0"
+          style={{ color: 'rgba(15,31,28,0.28)' }}>Today</span>
+        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: rec.color }} />
+        <span className="text-sm font-semibold shrink-0" style={{ color: 'var(--color-text)' }}>{rec.type}</span>
+        {rec.duration && (
+          <span className="data-value text-xs shrink-0" style={{ color: 'var(--color-text-muted)' }}>{rec.duration}</span>
+        )}
+        {rec.zone && (
+          <span className="data-value text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0"
+            style={{ backgroundColor: `${rec.color}13`, color: rec.color }}>{rec.zone}</span>
+        )}
       </div>
+
+      {/* Readiness ring — no label, the circle is self-evident */}
+      <span className="data-value text-[11px] font-bold w-6 h-6 rounded-full flex items-center justify-center shrink-0"
+        style={{ backgroundColor: rBg, color: rColor }}>{readinessScore}</span>
+
     </div>
   )
 }
@@ -273,14 +373,25 @@ export default function WeeklyCalendar({
   readinessScore = 78,
   onAddCalendarEvent,
   onRemoveCalendarEvent,
+  onAddPlanEvent,
+  onRemovePlanEvent,
+  scheduleBlocks = [],
+  onActivitySelect,
 }) {
   const [currentMonth, setCurrentMonth] = useState({ year: 2026, month: 5 }) // June 2026
   const [showModal, setShowModal]   = useState(false)
   const [pendingEvents, setPendingEvents] = useState([])
-  const [dayModal, setDayModal] = useState(null)   // null | { date, mode: 'pick'|'bike'|'gym'|'event' }
-  const [userWorkouts, setUserWorkouts] = useState({}) // { dateStr: [workout] }
+  const [dayModal, setDayModal] = useState(null)   // null | { date, mode: 'pick'|'bike'|'gym'|'event'|'plan' }
+  const [userWorkouts, setUserWorkouts] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('ciq_user_workouts') ?? '{}') }
+    catch { return {} }
+  }) // { dateStr: [workout] }
   const [sessionOverrides, setSessionOverrides] = useState({}) // { dateStr: { ...override fields } }
   const [copiedItem, setCopiedItem] = useState(null) // item copied for paste to another day
+
+  function persist(next) {
+    try { localStorage.setItem('ciq_user_workouts', JSON.stringify(next)) } catch {}
+  }
 
   function handleUpdateSession(dateStr, updates) {
     setSessionOverrides(prev => ({ ...prev, [dateStr]: { ...(prev[dateStr] ?? {}), ...updates } }))
@@ -288,32 +399,71 @@ export default function WeeklyCalendar({
 
   function handleSaveWorkout(dateStr, workout) {
     const id = Date.now()
-    setUserWorkouts(prev => ({
-      ...prev,
-      [dateStr]: [...(prev[dateStr] ?? []), { id, ...workout }],
-    }))
+    const next = { ...userWorkouts, [dateStr]: [...(userWorkouts[dateStr] ?? []), { id, ...workout }] }
+    setUserWorkouts(next)
+    persist(next)
     if (workout.type === 'event') {
       onAddCalendarEvent?.({ id, date: dateStr, name: workout.name, distance: workout.eventType, priority: workout.priority, location: workout.location, goal: '' })
+    }
+    if (workout.type === 'plan') {
+      onAddPlanEvent?.({ id, date: dateStr, name: workout.name })
     }
   }
   function handleRemoveWorkout(dateStr, workoutId) {
     const removed = userWorkouts[dateStr]?.find(w => w.id === workoutId)
-    setUserWorkouts(prev => ({
-      ...prev,
-      [dateStr]: (prev[dateStr] ?? []).filter(w => w.id !== workoutId),
-    }))
-    if (removed?.type === 'event') {
-      onRemoveCalendarEvent?.(workoutId)
-    }
+    const next = { ...userWorkouts, [dateStr]: (userWorkouts[dateStr] ?? []).filter(w => w.id !== workoutId) }
+    setUserWorkouts(next)
+    persist(next)
+    if (removed?.type === 'event') onRemoveCalendarEvent?.(workoutId)
+    if (removed?.type === 'plan') onRemovePlanEvent?.(workoutId)
   }
   function handleUpdateWorkout(dateStr, updatedWorkout) {
-    setUserWorkouts(prev => ({
-      ...prev,
-      [dateStr]: (prev[dateStr] ?? []).map(w => w.id === updatedWorkout.id ? updatedWorkout : w),
-    }))
+    const next = { ...userWorkouts, [dateStr]: (userWorkouts[dateStr] ?? []).map(w => w.id === updatedWorkout.id ? updatedWorkout : w) }
+    setUserWorkouts(next)
+    persist(next)
   }
 
   const allEvents = [...LIFE_EVENTS, ...pendingEvents]
+
+  // ── Scroll state (lifted from MonthView) ───────────────────────────────────
+  const scrollRef    = useRef(null)
+  const dividerRefs  = useRef({})
+  const todayRowRef  = useRef(null)
+  const [displayYear,  setDisplayYear]  = useState(currentMonth.year)
+  const [displayMonth, setDisplayMonth] = useState(currentMonth.month)
+
+  const getRelativeTop = el => {
+    const scroller = scrollRef.current
+    return scroller.scrollTop + el.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+  }
+
+  useEffect(() => {
+    const el = todayRowRef.current
+    if (el && scrollRef.current) scrollRef.current.scrollTop = getRelativeTop(el) - 8
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const root = scrollRef.current
+    if (!root) return
+    const obs = new IntersectionObserver(
+      entries => entries.forEach(e => {
+        if (e.isIntersecting) {
+          const [y, m] = e.target.dataset.monthKey.split('-').map(Number)
+          setDisplayYear(y); setDisplayMonth(m)
+        }
+      }),
+      { root, threshold: 0, rootMargin: '0px 0px -88% 0px' }
+    )
+    Object.values(dividerRefs.current).forEach(el => el && obs.observe(el))
+    return () => obs.disconnect()
+  }, [])
+
+  const jumpMonth = dir => {
+    const idx  = MONTHS_RANGE.findIndex(r => r.year === displayYear && r.month === displayMonth)
+    const next = MONTHS_RANGE[Math.max(0, Math.min(MONTHS_RANGE.length - 1, idx + dir))]
+    const el   = dividerRefs.current[next.key]
+    if (el && scrollRef.current) scrollRef.current.scrollTo({ top: getRelativeTop(el) - 4, behavior: 'smooth' })
+  }
 
   function fmtSecs(s) {
     const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60)
@@ -362,31 +512,55 @@ export default function WeeklyCalendar({
   }
 
   return (
-    <div className="card overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden rounded-2xl"
+      style={{ backgroundColor: '#FFFFFF', border: 'var(--border)', boxShadow: '0 1px 6px rgba(15,31,28,0.07)' }}>
 
-      {/* ── Calendar header ── */}
-      <div className="px-6 pt-5 pb-4" style={{ borderBottom: 'var(--border)' }}>
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="font-semibold text-lg">Training & Racing Calendar</h2>
+      {/* ── FROZEN: everything above the day grid ── */}
+      <div className="shrink-0">
+
+        {/* Yesterday → Today recommendation */}
+        <div className="px-4 py-2.5" style={{ borderBottom: 'var(--border)' }}>
+          <TodayRecommendation
+            readinessScore={readinessScore}
+            activityByDate={activityByDate}
+            userWorkouts={userWorkouts}
+            athleteFtp={athleteFtp}
+            seasonData={seasonData}
+            scheduleBlocks={scheduleBlocks}
+          />
+        </div>
+
+        {/* Month nav — centered */}
+        <div className="flex items-center justify-center gap-2 py-1.5" style={{ borderBottom: 'var(--border)' }}>
+          <button onClick={() => jumpMonth(-1)}
+            className="w-6 h-6 rounded-full flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}>‹</button>
+          <p className="font-semibold text-sm w-28 text-center">{MONTH_NAMES[displayMonth]} {displayYear}</p>
+          <button onClick={() => jumpMonth(1)}
+            className="w-6 h-6 rounded-full flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}>›</button>
+        </div>
+
+        {/* Day-of-week headers */}
+        <div className="flex items-stretch" style={{ borderBottom: '1px solid rgba(15,31,28,0.20)' }}>
+          <div className="grid flex-1" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
+            {DAY_NAMES.map(d => (
+              <div key={d} className="text-center text-xs font-semibold uppercase tracking-wide py-2"
+                style={{ color: 'var(--color-text-muted)', borderRight: '1px solid rgba(15,31,28,0.20)' }}>{d}</div>
+            ))}
+          </div>
+          <div className="text-center text-xs font-semibold uppercase tracking-wide py-2 flex items-center justify-center"
+            style={{ width: 112, color: 'var(--color-text-muted)', backgroundColor: 'rgba(15,31,28,0.09)' }}>
+            Total
           </div>
         </div>
       </div>
 
-      {/* ── Today's workout recommendation ── */}
-      <TodayRecommendation
-        readinessScore={readinessScore}
-        activityByDate={activityByDate}
-        userWorkouts={userWorkouts}
-        athleteFtp={athleteFtp}
-        seasonData={seasonData}
-      />
-
-      {/* ── Month view ── */}
-      <div className="p-4">
+      {/* ── SCROLLABLE: month grids ── */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <MonthView
-          year={currentMonth.year}
-          month={currentMonth.month}
+          dividerRefs={dividerRefs}
+          todayRowRef={todayRowRef}
           allEvents={allEvents}
           seasonData={seasonData}
           onDaySelect={handleDaySelect}
@@ -400,6 +574,8 @@ export default function WeeklyCalendar({
           getDaySummary={getDaySummary}
           userWorkouts={userWorkouts}
           sessionOverrides={sessionOverrides}
+          scheduleBlocks={scheduleBlocks}
+          onActivitySelect={onActivitySelect}
         />
       </div>
 
@@ -423,6 +599,7 @@ export default function WeeklyCalendar({
           copiedItem={copiedItem}
           onCopyItem={item => setCopiedItem(item)}
           onPasteItem={() => { if (copiedItem) { const { id, ...rest } = copiedItem; handleSaveWorkout(dayModal.date, rest) } }}
+          seasonRaces={seasonData?.races ?? []}
         />
       )}
 
@@ -544,13 +721,10 @@ const MONTHS_RANGE = (() => {
 
 // ─── Month view (continuous scroll) ──────────────────────────────────────────
 
-function MonthView({ year, month, allEvents, seasonData, onDaySelect, onDayAdd, onDaySelectItem, onRemoveItem, onCopyItem, onSkipSession, onPasteToDay, getDaySummary, userWorkouts, sessionOverrides, copiedItem }) {
+// MonthView renders only the scrollable grid content — nav/headers live in WeeklyCalendar
+function MonthView({ dividerRefs, todayRowRef, allEvents, seasonData, onDaySelect, onDayAdd, onDaySelectItem, onRemoveItem, onCopyItem, onSkipSession, onPasteToDay, getDaySummary, userWorkouts, sessionOverrides, copiedItem, scheduleBlocks = [], onActivitySelect }) {
   const today = TODAY
   const races = seasonData?.races ?? []
-  const [displayYear, setDisplayYear] = useState(year)
-  const [displayMonth, setDisplayMonth] = useState(month)
-  const scrollRef = useRef(null)
-  const dividerRefs = useRef({})
   const [contextMenu, setContextMenu] = useState(null)
 
   useEffect(() => {
@@ -560,142 +734,87 @@ function MonthView({ year, month, allEvents, seasonData, onDaySelect, onDayAdd, 
     return () => document.removeEventListener('click', close)
   }, [contextMenu])
 
-  // Helper: absolute position of el within the scroll container
-  const getRelativeTop = (el) => {
-    const scroller = scrollRef.current
-    const scrollerRect = scroller.getBoundingClientRect()
-    const elRect = el.getBoundingClientRect()
-    return scroller.scrollTop + elRect.top - scrollerRect.top
-  }
-
-  // Scroll to current month on mount
-  useEffect(() => {
-    const key = `${year}-${month}`
-    const el = dividerRefs.current[key]
-    if (el && scrollRef.current) {
-      scrollRef.current.scrollTop = getRelativeTop(el) - 4
+  // Generate all complete Mon–Sun weeks covering the full MONTHS_RANGE
+  const allWeeks = (() => {
+    const first = MONTHS_RANGE[0]
+    const last  = MONTHS_RANGE[MONTHS_RANGE.length - 1]
+    const start = new Date(first.year, first.month, 1)
+    // rewind to the Monday of that week
+    start.setDate(start.getDate() - ((start.getDay() + 6) % 7))
+    const end = new Date(last.year, last.month + 1, 0) // last day of last month
+    const weeks = []
+    const cur = new Date(start)
+    while (cur <= end) {
+      const week = []
+      for (let i = 0; i < 7; i++) { week.push(new Date(cur)); cur.setDate(cur.getDate() + 1) }
+      weeks.push(week)
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Update header month as user scrolls
-  useEffect(() => {
-    const root = scrollRef.current
-    if (!root) return
-    const observer = new IntersectionObserver(
-      entries => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            const [y, m] = entry.target.dataset.monthKey.split('-').map(Number)
-            setDisplayYear(y)
-            setDisplayMonth(m)
-          }
-        })
-      },
-      { root, threshold: 0, rootMargin: '0px 0px -88% 0px' }
-    )
-    Object.values(dividerRefs.current).forEach(el => el && observer.observe(el))
-    return () => observer.disconnect()
-  }, [])
-
-  const jumpMonth = (dir) => {
-    const idx = MONTHS_RANGE.findIndex(r => r.year === displayYear && r.month === displayMonth)
-    const next = MONTHS_RANGE[Math.max(0, Math.min(MONTHS_RANGE.length - 1, idx + dir))]
-    const el = dividerRefs.current[next.key]
-    if (el && scrollRef.current) {
-      scrollRef.current.scrollTo({ top: getRelativeTop(el) - 4, behavior: 'smooth' })
-    }
-  }
+    return weeks
+  })()
 
   return (
     <div>
-      {/* Month nav — updates as you scroll */}
-      <div className="flex items-center justify-between mb-3 pb-3" style={{ borderBottom: 'var(--border)' }}>
-        <button onClick={() => jumpMonth(-1)}
-          className="w-8 h-8 rounded-full flex items-center justify-center transition-colors"
-          style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}>‹</button>
-        <p className="font-semibold text-base">{MONTH_NAMES[displayMonth]} {displayYear}</p>
-        <button onClick={() => jumpMonth(1)}
-          className="w-8 h-8 rounded-full flex items-center justify-center transition-colors"
-          style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}>›</button>
-      </div>
+        {allWeeks.map((weekDays, wi) => {
+          // Month labels: insert above any week that contains a 1st-of-month
+          const monthStarts = weekDays.filter(d => d.getDate() === 1)
 
-      {/* Day-of-week labels */}
-      <div className="grid gap-1.5 mb-2" style={{ gridTemplateColumns: 'repeat(7, 1fr) 112px' }}>
-        {DAY_NAMES.map(d => (
-          <div key={d} className="text-center text-xs font-semibold uppercase tracking-wide py-1.5" style={{ color: 'var(--color-text-muted)' }}>
-            {d}
-          </div>
-        ))}
-        <div className="text-center text-xs font-semibold uppercase tracking-wide py-1.5" style={{ color: 'var(--color-text-muted)' }}>Total</div>
-      </div>
+          const userBikeMins = weekDays.reduce((s, d) => {
+            const wos = userWorkouts[isoDate(d)] ?? []
+            return s + wos.filter(w => w.type === 'bike').reduce((t, w) => t + (w.totalMin ?? 0), 0)
+          }, 0)
+          const userWorkoutTSS = weekDays.reduce((s, d) => {
+            const wos = userWorkouts[isoDate(d)] ?? []
+            return s + wos.reduce((t, w) => t + (w.tss ?? 0), 0)
+          }, 0)
+          const planTSS  = weekDays.reduce((s, d) => { const ses = TRAINING_PLAN[isoDate(d)]; return s + (ses?.tss ?? 0) }, 0) + userWorkoutTSS
+          const planSecs = userBikeMins > 0 ? userBikeMins * 60 : weekDays.reduce((s, d) => { const ses = TRAINING_PLAN[isoDate(d)]; return s + (ses ? parsePlanSecs(ses.duration) : 0) }, 0)
+          const actTSS   = weekDays.reduce((s, d) => { const a = getDaySummary(isoDate(d)); return s + (a?.totalTSS ?? 0) }, 0)
+          const stravaActSecs = weekDays.reduce((s, d) => { const a = getDaySummary(isoDate(d)); return s + (a ? parsePlanSecs(a.totalDuration) : 0) }, 0)
+          const actSecs  = stravaActSecs > 0 ? stravaActSecs : userBikeMins * 60
+          const actMiles = weekDays.reduce((s, d) => { const a = getDaySummary(isoDate(d)); return s + parseFloat(a?.totalDist ?? 0) }, 0)
 
-      {/* Scrollable continuous months */}
-      <div ref={scrollRef} className="overflow-y-auto" style={{ maxHeight: '700px' }}>
-        {MONTHS_RANGE.map(({ year: y, month: m, key }) => {
-          const days  = getMonthDays(y, m)
-          const weeks = Array.from({ length: Math.ceil(days.length / 7) }, (_, i) => days.slice(i * 7, i * 7 + 7))
+          const isThisWeek = weekDays.some(d => isoDate(d) === today)
+          // Primary month = month of Wednesday (middle of week)
+          const primaryMonth = weekDays[2].getMonth()
+          const primaryYear  = weekDays[2].getFullYear()
+
           return (
-            <div key={key} className="mb-6">
-              {/* Month divider — observed for header update */}
-              <div
-                ref={el => { dividerRefs.current[key] = el }}
-                data-month-key={key}
-                className="flex items-center gap-3 py-2 mb-2"
-              >
-                <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>
-                  {MONTH_NAMES[m]} {y}
-                </span>
-                <div className="flex-1 h-px" style={{ backgroundColor: 'var(--color-border)' }} />
-              </div>
-
-              {/* Week rows */}
-              <div className="space-y-2">
-                {weeks.map((rowDays, wi) => {
-                  // Logged bike workouts from WorkoutBuilder (plan = what user built, no Strava needed)
-                  const userBikeMins = rowDays.reduce((s, d) => {
-                    if (!d) return s
-                    const wos = userWorkouts[isoDate(d)] ?? []
-                    return s + wos.filter(w => w.type === 'bike').reduce((t, w) => t + (w.totalMin ?? 0), 0)
-                  }, 0)
-                  const planTSS  = rowDays.reduce((s, d) => { if (!d) return s; const ses = TRAINING_PLAN[isoDate(d)]; return s + (ses?.tss ?? 0) }, 0)
-                  // Plan hours: prefer workout builder totalMin, fall back to TRAINING_PLAN duration
-                  const planSecs = userBikeMins > 0 ? userBikeMins * 60 : rowDays.reduce((s, d) => { if (!d) return s; const ses = TRAINING_PLAN[isoDate(d)]; return s + (ses ? parsePlanSecs(ses.duration) : 0) }, 0)
-                  const actTSS   = rowDays.reduce((s, d) => { if (!d) return s; const a = getDaySummary(isoDate(d)); return s + (a?.totalTSS ?? 0) }, 0)
-                  // Actual hours: Strava if available, else workout builder logged time
-                  const stravaActSecs = rowDays.reduce((s, d) => { if (!d) return s; const a = getDaySummary(isoDate(d)); return s + (a ? parsePlanSecs(a.totalDuration) : 0) }, 0)
-                  const actSecs  = stravaActSecs > 0 ? stravaActSecs : userBikeMins * 60
-                  const actMiles = rowDays.reduce((s, d) => { if (!d) return s; const a = getDaySummary(isoDate(d)); return s + parseFloat(a?.totalDist ?? 0) }, 0)
-
+            <div key={wi}>
+              {/* Invisible sentinels for IntersectionObserver — keeps ‹ Month Year › header in sync */}
+              {monthStarts.map(d => {
+                const my = d.getFullYear(), mm = d.getMonth(), key = `${my}-${mm}`
+                return <div key={key} ref={el => { dividerRefs.current[key] = el }} data-month-key={key} style={{ height: 0 }} />
+              })}
+              <div ref={isThisWeek ? todayRowRef : null} className="flex"
+                style={{ borderBottom: '1px solid rgba(15,31,28,0.20)', borderTop: wi === 0 ? '1px solid rgba(15,31,28,0.20)' : 'none' }}>
+                <div className="grid flex-1" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
+                {weekDays.map((date, i) => {
+                  const dateStr = isoDate(date)
+                  const session = TRAINING_PLAN[dateStr]
+                  const actDay  = getDaySummary(dateStr)
+                  const isToday = dateStr === today
+                  const race    = races.find(r => r.date === dateStr && !r.id)
+                  const displayIntensity = actDay ? actDay.primary.intensity : session?.intensity
+                  const dotColor = displayIntensity ? INTENSITY_COLOR[displayIntensity].bar : null
+                  const isSecondaryMonth = date.getMonth() !== primaryMonth || date.getFullYear() !== primaryYear
                   return (
-                    <div key={wi} className="grid gap-2" style={{ gridTemplateColumns: 'repeat(7, 1fr) 112px' }}>
-                      {Array.from({ length: 7 }, (_, i) => {
-                        const date = rowDays[i]
-                        if (!date) return <div key={i} />
-                        const dateStr = isoDate(date)
-                        const session = TRAINING_PLAN[dateStr]
-                        const actDay  = getDaySummary(dateStr)
-                        const isToday = dateStr === today
-                        // Only show race tile for hardcoded/pre-set races (no id); calendar-added events render via userWorkouts instead
-                        const race    = races.find(r => r.date === dateStr && !r.id)
-                        const displayIntensity = actDay ? actDay.primary.intensity : session?.intensity
-                        const dotColor = displayIntensity ? INTENSITY_COLOR[displayIntensity].bar : null
-                        return (
                           <button
                             key={dateStr}
                             onClick={() => copiedItem ? onPasteToDay(dateStr) : onDaySelect(dateStr)}
-                            className="relative flex flex-col rounded-2xl text-left transition-all overflow-hidden group"
+                            className="relative flex flex-col text-left transition-colors group"
                             style={{
-                              backgroundColor: copiedItem ? 'rgba(0,200,150,0.03)' : '#FFFFFF',
-                              border: copiedItem ? '1px dashed rgba(0,200,150,0.5)' : isToday ? '2px solid #FF2D78' : '1px solid #0A1628',
+                              backgroundColor: copiedItem ? 'rgba(0,200,150,0.05)' : isToday ? 'rgba(255,45,120,0.04)' : isSecondaryMonth ? 'rgba(15,31,28,0.025)' : '#FFFFFF',
+                              borderRight: '1px solid rgba(15,31,28,0.20)',
                               padding: '10px 10px 26px 10px',
-                              height: '170px',
+                              minHeight: '140px',
                               cursor: copiedItem ? 'copy' : 'pointer',
+                              overflow: 'hidden',
                             }}
                           >
                             {/* Date + tick */}
                             <div className="flex items-center justify-between w-full mb-1.5">
-                              <span className="data-value text-sm font-bold"
-                                style={{ color: isToday ? '#FF2D78' : 'var(--color-text-muted)' }}>
+                              <span className={`data-value text-sm font-bold${isToday ? ' w-6 h-6 rounded-full flex items-center justify-center text-white text-xs' : ''}`}
+                                style={{ backgroundColor: isToday ? '#FF2D78' : 'transparent', color: isToday ? '#FFFFFF' : 'var(--color-text-muted)' }}>
                                 {date.getDate()}
                               </span>
                               {actDay && !race && (
@@ -712,8 +831,15 @@ function MonthView({ year, month, allEvents, seasonData, onDaySelect, onDayAdd, 
 
                             {/* Completed activity — mini-box */}
                             {actDay && !race && (
-                              <div className="rounded-lg px-2 py-1.5 flex-1 flex flex-col justify-between" style={{ backgroundColor: 'rgba(0,168,126,0.06)', border: '0.5px solid rgba(0,168,126,0.2)' }}>
-                                <p className="text-xs font-semibold leading-tight" style={{ color: 'var(--color-text)' }}>{actDay.primary.sport}</p>
+                              <div
+                                className="rounded-lg px-2 py-1.5 flex-1 flex flex-col justify-between cursor-pointer"
+                                style={{ backgroundColor: 'rgba(0,168,126,0.06)', border: '0.5px solid rgba(0,168,126,0.2)' }}
+                                onClick={e => { e.stopPropagation(); onActivitySelect?.(actDay) }}
+                              >
+                                <p className="text-xs font-semibold leading-tight flex items-center gap-1" style={{ color: 'var(--color-text)' }}>
+                                  <SportIcon sport={actDay.primary.sport} size={12} color="#1A2421" />
+                                  {actDay.primary.sport}
+                                </p>
                                 {actDay.totalDuration && (
                                   <p className="data-value text-sm font-bold leading-none mt-1" style={{ color: 'var(--color-text)' }}>{actDay.totalDuration}</p>
                                 )}
@@ -739,20 +865,45 @@ function MonthView({ year, month, allEvents, seasonData, onDaySelect, onDayAdd, 
                               </div>
                             )}
 
+                            {/* Today's schedule blocks (work/family/etc from Overview) */}
+                            {isToday && scheduleBlocks.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mb-1">
+                                {scheduleBlocks.map(blk => {
+                                  const blkColor = { work: '#1B6FD8', family: '#E86D2E', school: '#A78BFA', social: '#F5A623', commitment: '#94A3B8' }[blk.type] ?? '#637068'
+                                  return (
+                                    <span key={blk.id} className="text-[9px] font-medium px-1.5 py-0.5 rounded"
+                                      style={{ backgroundColor: `${blkColor}14`, color: blkColor }}>
+                                      {blk.label || blk.type}
+                                    </span>
+                                  )
+                                })}
+                              </div>
+                            )}
+
                             {/* User-added items — each in its own mini-box */}
                             {(userWorkouts[dateStr] ?? []).map((w, wi2) => {
-                              const color = w.type === 'gym' ? '#A78BFA' : w.type === 'event' ? '#FF2D78' : '#00C896'
-                              const bg    = w.type === 'gym' ? 'rgba(167,139,250,0.08)' : w.type === 'event' ? 'rgba(255,45,120,0.06)' : 'rgba(0,200,150,0.06)'
-                              const border = w.type === 'gym' ? 'rgba(167,139,250,0.25)' : w.type === 'event' ? 'rgba(255,45,120,0.2)' : 'rgba(0,200,150,0.2)'
-                              const icon  = w.type === 'gym' ? '🏋️' : w.type === 'event' ? '🏁' : '🚴'
-                              const label = w.name || (w.type === 'gym' ? 'Gym' : w.type === 'event' ? 'Event' : 'Ride')
+                              const color  = ITEM_TYPE_COLOR[w.type] ?? '#00C896'
+                              const bg     = w.type === 'gym'   ? 'rgba(167,139,250,0.08)'
+                                           : w.type === 'event' ? 'rgba(255,45,120,0.06)'
+                                           : w.type === 'plan'  ? 'rgba(245,158,11,0.08)'
+                                           : 'rgba(0,200,150,0.06)'
+                              const border = w.type === 'gym'   ? 'rgba(167,139,250,0.25)'
+                                           : w.type === 'event' ? 'rgba(255,45,120,0.2)'
+                                           : w.type === 'plan'  ? 'rgba(245,158,11,0.3)'
+                                           : 'rgba(0,200,150,0.2)'
+                              const label = w.name || (w.type === 'gym' ? 'Gym' : w.type === 'event' ? 'Event' : w.type === 'plan' ? 'Life Event' : 'Ride')
                               return (
-                                <div key={wi2} className="rounded-lg px-2 py-1.5 mt-1 flex items-center gap-1.5 cursor-pointer"
+                                <div key={wi2} className="rounded-lg px-2 py-1.5 mt-1 cursor-pointer"
                                   style={{ backgroundColor: bg, border: `0.5px solid ${border}` }}
                                   onClick={e => { e.stopPropagation(); onDaySelectItem(dateStr, w.id) }}
                                   onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setContextMenu({ dateStr, itemId: w.id, item: w, label, x: e.clientX, y: e.clientY }) }}>
-                                  <span className="text-xs leading-none">{icon}</span>
-                                  <span className="text-xs font-medium truncate" style={{ color }}>{label}</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <SportIcon type={w.type} size={12} color={color} />
+                                    <span className="text-xs font-medium truncate" style={{ color }}>{label}</span>
+                                  </div>
+                                  {w.tss > 0 && (
+                                    <p className="data-value text-[10px] font-semibold mt-0.5" style={{ color }}>~{w.tss} TSS</p>
+                                  )}
                                 </div>
                               )
                             })}
@@ -764,16 +915,17 @@ function MonthView({ year, month, allEvents, seasonData, onDaySelect, onDayAdd, 
                               title="Add to this day"
                             >
                               <span className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold leading-none"
-                                style={{ backgroundColor: 'rgba(0,200,150,0.15)', color: '#00A87E' }}>
+                                style={{ backgroundColor: '#0F1F1C', color: '#ffffff' }}>
                                 +
                               </span>
                             </div>
                           </button>
                         )
                       })}
+                      </div>
 
                       {/* Week total */}
-                      <div className="flex flex-col justify-center pl-3 gap-3">
+                      <div className="flex flex-col justify-center gap-3" style={{ width: 112, paddingLeft: 12, backgroundColor: 'rgba(15,31,28,0.09)' }}>
                         {(planTSS > 0 || actTSS > 0 || userBikeMins > 0) && (
                           <>
                             <div>
@@ -830,13 +982,9 @@ function MonthView({ year, month, allEvents, seasonData, onDaySelect, onDayAdd, 
                         )}
                       </div>
                     </div>
-                  )
-                })}
               </div>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
 
       {/* Right-click context menu */}
       {contextMenu && (
@@ -880,13 +1028,14 @@ function MonthView({ year, month, allEvents, seasonData, onDaySelect, onDayAdd, 
 
 // ─── Day Add Modal ────────────────────────────────────────────────────────────
 
-const ITEM_TYPE_COLOR = { bike: '#00C896', gym: '#A78BFA', event: '#FF2D78' }
-const ITEM_TYPE_ICON  = { bike: '🚴', gym: '🏋️', event: '🏁' }
+const ITEM_TYPE_COLOR = { bike: '#00C896', gym: '#A78BFA', event: '#FF2D78', plan: '#F59E0B' }
+const ITEM_TYPE_ICON  = { bike: '🚴', gym: '🏋️', event: '🏁', plan: '📅' }
 
-function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWorkouts = [], onRemoveWorkout, onUpdateWorkout, plannedSession = null, sessionOverride = null, onUpdateSession, addMode = true, selectedItemId = null, copiedItem = null, onCopyItem, onPasteItem }) {
+function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWorkouts = [], onRemoveWorkout, onUpdateWorkout, plannedSession = null, sessionOverride = null, onUpdateSession, addMode = true, selectedItemId = null, copiedItem = null, onCopyItem, onPasteItem, seasonRaces = [] }) {
   const [editingId, setEditingId] = useState(null)
   const [editDraft, setEditDraft] = useState(null)
   const [editBikeItem, setEditBikeItem] = useState(null)
+  const [editGymItem, setEditGymItem] = useState(null)
   const [modalContextMenu, setModalContextMenu] = useState(null)
 
   useEffect(() => {
@@ -906,6 +1055,7 @@ function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWo
   const d = new Date(date + 'T00:00:00')
   const label = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
   const isBike = mode === 'bike' || mode === 'edit_plan' || mode === 'edit_bike'
+  const isGym  = mode === 'gym' || mode === 'edit_gym'
 
   return (
     <div
@@ -918,7 +1068,7 @@ function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWo
         style={{
           backgroundColor: '#FFFFFF',
           boxShadow: '0 20px 60px rgba(15,31,28,0.25)',
-          maxWidth: isBike ? 680 : 400,
+          maxWidth: isBike ? 680 : isGym ? 480 : 400,
           maxHeight: '90vh',
           overflowY: 'auto',
         }}
@@ -964,8 +1114,14 @@ function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWo
                           <span className="text-sm">{ITEM_TYPE_ICON[w.type] ?? '📌'}</span>
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-semibold truncate" style={{ color: 'var(--color-text)' }}>{displayName}</p>
-                            {w.type === 'gym' && w.duration && !isEditing && <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{w.duration} min</p>}
+                            {w.type === 'gym' && !isEditing && (
+                              <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+                                {w.duration ? `${w.duration} min` : ''}
+                                {w.blocks?.length > 0 && ` · ${w.blocks.length} block${w.blocks.length !== 1 ? 's' : ''}`}
+                              </p>
+                            )}
                             {w.type === 'event' && w.eventType && !isEditing && <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{w.eventType} · {w.priority}</p>}
+                            {w.type === 'plan' && !isEditing && <p className="text-[10px]" style={{ color: '#B45309' }}>Appears in today's schedule</p>}
                           </div>
                           {!isEditing && (
                             <div className="flex items-center gap-2">
@@ -973,6 +1129,7 @@ function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWo
                                 style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}
                                 onClick={() => {
                                   if (w.type === 'bike') { setEditBikeItem(w); onSetMode('edit_bike') }
+                                  else if (w.type === 'gym') { setEditGymItem(w); onSetMode('edit_gym') }
                                   else startEdit(w)
                                 }}>Edit</button>
                               <button className="text-[10px] font-medium px-2 py-1 rounded-lg"
@@ -985,8 +1142,41 @@ function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWo
                         {/* Expanded detail view — shown when this specific item is selected */}
                         {selectedItemId && !isEditing && (w.notes || w.location || w.type === 'bike') && (
                           <div className="px-3 pb-3" style={{ borderTop: '0.5px solid rgba(15,31,28,0.08)' }}>
-                            {w.type === 'gym' && w.notes && (
-                              <p className="text-xs mt-2 leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>{w.notes}</p>
+                            {w.type === 'gym' && (
+                              w.blocks?.length > 0 ? (
+                                <div className="mt-2 space-y-2.5">
+                                  {w.blocks.map((block, bi) => (
+                                    block.type === 'single' ? (
+                                      <div key={block.id}>
+                                        <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: GYM_ACCENT }}>{block.exercise?.name || 'Exercise'}</p>
+                                        {(block.exercise?.sets ?? []).map((s, si) => (
+                                          <p key={s.id} className="data-value text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+                                            Set {si + 1}: {s.reps} reps{s.weight ? ` × ${s.weight} lbs` : ''}
+                                          </p>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <div key={block.id}>
+                                        <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: GYM_ACCENT }}>
+                                          Superset {bi + 1}
+                                        </p>
+                                        {(block.exercises ?? []).map((ex, ei) => (
+                                          <div key={ex.id} className={ei > 0 ? 'mt-1.5' : ''}>
+                                            <p className="text-[10px] font-semibold" style={{ color: 'var(--color-text)' }}>{ex.name || 'Exercise'}</p>
+                                            {(ex.sets ?? []).map((s, si) => (
+                                              <p key={s.id} className="data-value text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+                                                Set {si + 1}: {s.reps} reps{s.weight ? ` × ${s.weight} lbs` : ''}
+                                              </p>
+                                            ))}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )
+                                  ))}
+                                </div>
+                              ) : w.notes ? (
+                                <p className="text-xs mt-2 leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>{w.notes}</p>
+                              ) : null
                             )}
                             {w.type === 'event' && (
                               <div className="mt-2 space-y-1">
@@ -1017,21 +1207,18 @@ function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWo
                               </div>
                             )}
                             {w.type === 'gym' && (
+                              <div className="pt-2">
+                                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                                  Use the Edit button above to open the full workout builder.
+                                </p>
+                              </div>
+                            )}
+                            {w.type === 'plan' && (
                               <div className="space-y-2 pt-2">
                                 <div>
                                   <label className="text-[10px] uppercase tracking-wide mb-1 block" style={{ color: 'var(--color-text-muted)' }}>Name</label>
                                   <input className="w-full text-xs rounded-lg px-2.5 py-1.5 outline-none" style={{ border: 'var(--border)', backgroundColor: '#FFFFFF' }}
                                     value={editDraft.name || ''} onChange={e => setEditDraft({ ...editDraft, name: e.target.value })} />
-                                </div>
-                                <div>
-                                  <label className="text-[10px] uppercase tracking-wide mb-1 block" style={{ color: 'var(--color-text-muted)' }}>Duration (min)</label>
-                                  <input type="number" className="w-full text-xs rounded-lg px-2.5 py-1.5 outline-none data-value" style={{ border: 'var(--border)', backgroundColor: '#FFFFFF' }}
-                                    value={editDraft.duration || ''} onChange={e => setEditDraft({ ...editDraft, duration: e.target.value })} />
-                                </div>
-                                <div>
-                                  <label className="text-[10px] uppercase tracking-wide mb-1 block" style={{ color: 'var(--color-text-muted)' }}>Exercises / Notes</label>
-                                  <textarea className="w-full text-xs rounded-lg px-2.5 py-1.5 outline-none resize-none" rows={2} style={{ border: 'var(--border)', backgroundColor: '#FFFFFF' }}
-                                    value={editDraft.notes || ''} onChange={e => setEditDraft({ ...editDraft, notes: e.target.value })} />
                                 </div>
                               </div>
                             )}
@@ -1135,6 +1322,15 @@ function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWo
                       <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Add a race or event</p>
                     </div>
                   </button>
+                  <button onClick={() => onSetMode('plan')}
+                    className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-left"
+                    style={{ border: '1px solid #0A1628', backgroundColor: '#FFFFFF' }}>
+                    <span className="text-base">📅</span>
+                    <div>
+                      <p className="font-semibold text-sm">Life Event</p>
+                      <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Travel, vacation, schedule block</p>
+                    </div>
+                  </button>
                 </div>
               </>
             )}
@@ -1184,17 +1380,42 @@ function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWo
           )
         })()}
 
-        {/* Gym form */}
+        {/* Gym form — add new */}
         {mode === 'gym' && (
           <div className="p-5">
             <GymForm onSave={onSave} onCancel={() => onSetMode('pick')} />
           </div>
         )}
 
+        {/* Gym form — edit existing */}
+        {mode === 'edit_gym' && (() => {
+          const gymItem = editGymItem ?? dayWorkouts.find(w => w.id === selectedItemId)
+          if (!gymItem) return null
+          return (
+            <div className="p-5">
+              <GymForm
+                initial={gymItem}
+                onSave={updated => {
+                  onUpdateWorkout({ ...gymItem, ...updated, id: gymItem.id })
+                  setEditGymItem(null)
+                  onClose()
+                }}
+                onCancel={() => { setEditGymItem(null); onSetMode('pick') }}
+              />
+            </div>
+          )
+        })()}
+
         {/* Event form */}
         {mode === 'event' && (
           <div className="p-5">
-            <EventForm onSave={onSave} onCancel={() => onSetMode('pick')} />
+            <EventForm onSave={onSave} onCancel={() => onSetMode('pick')} seasonRaces={seasonRaces} />
+          </div>
+        )}
+
+        {mode === 'plan' && (
+          <div className="p-5">
+            <PlanForm onSave={onSave} onCancel={() => onSetMode('pick')} />
           </div>
         )}
       </div>
@@ -1409,42 +1630,290 @@ function MonthDayDetail({ dateStr, session, activityDay, lifeEvents, race, build
 
 // ─── GymForm ─────────────────────────────────────────────────────────────────
 
-function GymForm({ onSave, onCancel }) {
-  const [duration, setDuration] = useState(60)
-  const [notes, setNotes] = useState('')
+const GYM_ACCENT = '#A78BFA'
+
+function SetRow({ num, set, onUpdate, onRemove, canRemove }) {
+  return (
+    <div className="flex items-center gap-2 py-1">
+      <span className="data-value text-[10px] w-5 text-right shrink-0" style={{ color: 'var(--color-text-muted)' }}>
+        {num}
+      </span>
+      <div className="flex items-center gap-1 shrink-0">
+        <button
+          onClick={() => onUpdate({ ...set, reps: Math.max(1, set.reps - 1) })}
+          className="w-5 h-5 rounded-full flex items-center justify-center text-xs"
+          style={{ backgroundColor: 'rgba(15,31,28,0.07)', color: 'var(--color-text-muted)' }}>−</button>
+        <span className="data-value text-xs font-bold w-5 text-center">{set.reps}</span>
+        <button
+          onClick={() => onUpdate({ ...set, reps: Math.min(50, set.reps + 1) })}
+          className="w-5 h-5 rounded-full flex items-center justify-center text-xs"
+          style={{ backgroundColor: 'rgba(15,31,28,0.07)', color: 'var(--color-text)' }}>+</button>
+        <span className="text-[10px] ml-0.5 shrink-0" style={{ color: 'var(--color-text-muted)' }}>reps</span>
+      </div>
+      <input
+        type="text"
+        inputMode="decimal"
+        placeholder="— lbs"
+        value={set.weight}
+        onChange={e => onUpdate({ ...set, weight: e.target.value })}
+        className="data-value text-xs rounded-lg px-2 py-1 outline-none flex-1 min-w-0 text-right"
+        style={{ border: 'var(--border)', backgroundColor: '#FFFFFF', color: 'var(--color-text)' }}
+      />
+      <button
+        onClick={onRemove}
+        className="w-5 h-5 rounded-full flex items-center justify-center text-xs shrink-0 transition-opacity"
+        style={{
+          backgroundColor: canRemove ? 'rgba(232,85,85,0.08)' : 'transparent',
+          color: canRemove ? '#C94444' : 'transparent',
+          cursor: canRemove ? 'pointer' : 'default',
+        }}
+        disabled={!canRemove}
+      >×</button>
+    </div>
+  )
+}
+
+function ExerciseBlock({ exercise, onUpdate }) {
+  function updateSet(setId, updated) {
+    onUpdate({ ...exercise, sets: exercise.sets.map(s => s.id !== setId ? s : updated) })
+  }
+  function removeSet(setId) {
+    const sets = exercise.sets.filter(s => s.id !== setId)
+    if (sets.length === 0) return
+    onUpdate({ ...exercise, sets })
+  }
+  function addSet() {
+    const last = exercise.sets[exercise.sets.length - 1]
+    onUpdate({ ...exercise, sets: [...exercise.sets, { id: Date.now() + Math.random(), reps: last?.reps ?? 8, weight: last?.weight ?? '' }] })
+  }
+  return (
+    <div className="space-y-0.5">
+      <input
+        type="text"
+        placeholder="Exercise name"
+        value={exercise.name}
+        onChange={e => onUpdate({ ...exercise, name: e.target.value })}
+        className="w-full text-xs font-semibold rounded-lg px-2.5 py-1.5 outline-none"
+        style={{ border: 'var(--border)', backgroundColor: '#FFFFFF', color: 'var(--color-text)' }}
+      />
+      <div className="pl-1">
+        {exercise.sets.map((s, i) => (
+          <SetRow
+            key={s.id}
+            num={i + 1}
+            set={s}
+            onUpdate={updated => updateSet(s.id, updated)}
+            onRemove={() => removeSet(s.id)}
+            canRemove={exercise.sets.length > 1}
+          />
+        ))}
+        <button
+          onClick={addSet}
+          className="text-[10px] font-semibold px-2 py-0.5 rounded mt-0.5"
+          style={{ color: GYM_ACCENT, backgroundColor: `${GYM_ACCENT}12` }}
+        >+ set</button>
+      </div>
+    </div>
+  )
+}
+
+function GymForm({ onSave, onCancel, initial = null }) {
+  const makeId  = () => Date.now() + Math.random()
+  const makeSet = (prev = null) => ({ id: makeId(), reps: prev?.reps ?? 8, weight: prev?.weight ?? '' })
+  const makeExercise = (name = '') => ({ id: makeId(), name, sets: [makeSet()] })
+
+  const [sessionName, setSessionName] = useState(initial?.name ?? 'Gym / Strength')
+  const [duration, setDuration]       = useState(initial?.duration ?? 60)
+  const [blocks, setBlocks]           = useState(initial?.blocks ?? [])
+
+  function addSingleBlock() {
+    setBlocks(b => [...b, { id: makeId(), type: 'single', exercise: makeExercise() }])
+  }
+  function addSupersetBlock() {
+    setBlocks(b => [...b, { id: makeId(), type: 'superset', exercises: [makeExercise(), makeExercise()] }])
+  }
+  function removeBlock(blockId) {
+    setBlocks(b => b.filter(x => x.id !== blockId))
+  }
+  function updateSingleExercise(blockId, updated) {
+    setBlocks(b => b.map(x => x.id !== blockId ? x : { ...x, exercise: updated }))
+  }
+  function updateSupersetExercise(blockId, exId, updated) {
+    setBlocks(b => b.map(x => {
+      if (x.id !== blockId) return x
+      return { ...x, exercises: x.exercises.map(e => e.id !== exId ? e : updated) }
+    }))
+  }
+  function addExerciseToSuperset(blockId) {
+    setBlocks(b => b.map(x => {
+      if (x.id !== blockId) return x
+      return { ...x, exercises: [...x.exercises, makeExercise()] }
+    }))
+  }
+  function removeExerciseFromSuperset(blockId, exId) {
+    setBlocks(b => b.map(x => {
+      if (x.id !== blockId) return x
+      const exercises = x.exercises.filter(e => e.id !== exId)
+      return { ...x, exercises: exercises.length ? exercises : [makeExercise()] }
+    }))
+  }
+
+  const canSave = blocks.length > 0
+
   return (
     <div className="space-y-4">
-      <p className="section-title">Gym / Strength session</p>
-      <div className="flex items-center gap-4">
-        <p className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>Duration</p>
-        <div className="flex items-center gap-2">
+      {/* Header row */}
+      <div className="flex items-center justify-between gap-3">
+        <input
+          type="text"
+          value={sessionName}
+          onChange={e => setSessionName(e.target.value)}
+          className="flex-1 text-sm font-semibold rounded-lg px-3 py-2 outline-none"
+          style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)', color: 'var(--color-text)' }}
+          placeholder="Session name"
+        />
+        <div className="flex items-center gap-1.5 shrink-0">
           <button onClick={() => setDuration(v => Math.max(15, v - 15))}
-            className="w-7 h-7 rounded-full flex items-center justify-center text-base"
+            className="w-6 h-6 rounded-full flex items-center justify-center text-xs"
             style={{ backgroundColor: 'rgba(15,31,28,0.07)', color: 'var(--color-text-muted)' }}>−</button>
-          <span className="data-value text-sm font-bold w-14 text-center">{duration} min</span>
+          <span className="data-value text-xs font-bold w-10 text-center">{duration}m</span>
           <button onClick={() => setDuration(v => Math.min(180, v + 15))}
-            className="w-7 h-7 rounded-full flex items-center justify-center text-base"
+            className="w-6 h-6 rounded-full flex items-center justify-center text-xs"
             style={{ backgroundColor: 'rgba(15,31,28,0.07)', color: 'var(--color-text)' }}>+</button>
         </div>
       </div>
+
+      {/* Workout blocks */}
+      {blocks.length > 0 && (
+        <div className="space-y-3">
+          {blocks.map((block, bi) => (
+            <div key={block.id} className="rounded-xl p-3 space-y-2.5"
+              style={{ border: `1px solid ${GYM_ACCENT}30`, backgroundColor: `${GYM_ACCENT}06` }}>
+              {/* Block header */}
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: GYM_ACCENT }}>
+                  {block.type === 'single' ? `Block ${bi + 1} · Single Set` : `Block ${bi + 1} · Superset`}
+                </span>
+                <button onClick={() => removeBlock(block.id)}
+                  className="text-[10px] px-1.5 py-0.5 rounded"
+                  style={{ color: '#C94444', backgroundColor: 'rgba(232,85,85,0.08)' }}>Remove</button>
+              </div>
+
+              {block.type === 'single' && (
+                <ExerciseBlock
+                  exercise={block.exercise}
+                  onUpdate={updated => updateSingleExercise(block.id, updated)}
+                />
+              )}
+
+              {block.type === 'superset' && (
+                <div className="space-y-3">
+                  {block.exercises.map((ex, ei) => (
+                    <div key={ex.id}>
+                      {block.exercises.length > 1 && (
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] uppercase tracking-wider font-semibold"
+                            style={{ color: 'var(--color-text-muted)' }}>Exercise {ei + 1}</span>
+                          <button onClick={() => removeExerciseFromSuperset(block.id, ex.id)}
+                            className="text-[10px] px-1 py-0.5 rounded"
+                            style={{ color: 'var(--color-text-muted)' }}>✕</button>
+                        </div>
+                      )}
+                      <ExerciseBlock
+                        exercise={ex}
+                        onUpdate={updated => updateSupersetExercise(block.id, ex.id, updated)}
+                      />
+                      {ei < block.exercises.length - 1 && (
+                        <div className="mt-2.5 mb-1 flex items-center gap-2">
+                          <div className="flex-1 h-px" style={{ backgroundColor: `${GYM_ACCENT}25` }} />
+                          <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: `${GYM_ACCENT}80` }}>then</span>
+                          <div className="flex-1 h-px" style={{ backgroundColor: `${GYM_ACCENT}25` }} />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  <button onClick={() => addExerciseToSuperset(block.id)}
+                    className="text-[10px] font-semibold px-2.5 py-1 rounded-full"
+                    style={{ color: GYM_ACCENT, backgroundColor: `${GYM_ACCENT}12` }}>
+                    + Add exercise
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add block buttons */}
+      <div className="flex gap-2">
+        <button onClick={addSingleBlock}
+          className="flex-1 py-2 rounded-xl text-xs font-semibold border-2 border-dashed transition-colors"
+          style={{ borderColor: `${GYM_ACCENT}40`, color: GYM_ACCENT, backgroundColor: `${GYM_ACCENT}06` }}>
+          + Single Set
+        </button>
+        <button onClick={addSupersetBlock}
+          className="flex-1 py-2 rounded-xl text-xs font-semibold border-2 border-dashed transition-colors"
+          style={{ borderColor: `${GYM_ACCENT}40`, color: GYM_ACCENT, backgroundColor: `${GYM_ACCENT}06` }}>
+          + Superset
+        </button>
+      </div>
+
+      {/* Actions */}
+      <div className="flex gap-2 pt-1">
+        <button onClick={onCancel}
+          className="flex-1 py-2.5 rounded-full text-sm font-medium"
+          style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text-muted)' }}>Cancel</button>
+        <button
+          onClick={() => onSave({ type: 'gym', name: sessionName.trim() || 'Gym / Strength', duration, blocks })}
+          disabled={!canSave}
+          className="flex-1 py-2.5 rounded-full text-sm font-semibold transition-opacity"
+          style={{ backgroundColor: GYM_ACCENT, color: '#fff', opacity: canSave ? 1 : 0.4 }}>
+          {initial ? 'Save session' : 'Add session'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── PlanForm ─────────────────────────────────────────────────────────────────
+
+const PLAN_ACCENT   = '#F59E0B'
+const PLAN_PRESETS  = ['Travel', 'Vacation', 'Event', 'Rest Day']
+
+function PlanForm({ onSave, onCancel }) {
+  const [name, setName] = useState('')
+  const canSave = name.trim().length > 0
+  return (
+    <div className="space-y-4">
       <div>
-        <p className="text-xs font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>Exercises / Notes</p>
-        <textarea
-          className="w-full rounded-xl px-3 py-2.5 text-sm outline-none resize-none"
-          style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }}
-          placeholder="e.g. Squats 3×8, Romanian deadlift 3×10, Pull-ups 3×8..."
-          rows={4} value={notes} onChange={e => setNotes(e.target.value)}
-        />
+        <p className="font-semibold text-sm mb-0.5">All-day event</p>
+        <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Marks this as an off day — no training recommended.</p>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {PLAN_PRESETS.map(p => (
+          <button key={p} onClick={() => setName(p)}
+            className="flex items-center gap-2.5 px-4 py-3 rounded-xl text-left transition-all"
+            style={{
+              backgroundColor: name === p ? PLAN_ACCENT : 'rgba(15,31,28,0.04)',
+              border: name === p ? `1.5px solid ${PLAN_ACCENT}` : '1px solid rgba(15,31,28,0.10)',
+              color: name === p ? '#fff' : 'var(--color-text)',
+            }}>
+            <span className="text-base leading-none">
+              {p === 'Travel' ? '✈️' : p === 'Vacation' ? '🌴' : p === 'Event' ? '🎉' : '😴'}
+            </span>
+            <span className="font-semibold text-sm">{p}</span>
+          </button>
+        ))}
       </div>
       <div className="flex gap-2 pt-1">
         <button onClick={onCancel}
           className="flex-1 py-2.5 rounded-full text-sm font-medium"
           style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text-muted)' }}>Cancel</button>
         <button
-          onClick={() => onSave({ type: 'gym', name: 'Gym / Strength', duration, notes })}
+          onClick={() => { if (canSave) onSave({ type: 'plan', name: name.trim() }) }}
           className="flex-1 py-2.5 rounded-full text-sm font-semibold"
-          style={{ backgroundColor: '#A78BFA', color: '#fff' }}>
-          Add session
+          style={{ backgroundColor: PLAN_ACCENT, color: '#fff', opacity: canSave ? 1 : 0.45 }}>
+          Add to calendar
         </button>
       </div>
     </div>
@@ -1453,70 +1922,255 @@ function GymForm({ onSave, onCancel }) {
 
 // ─── EventForm ────────────────────────────────────────────────────────────────
 
-function EventForm({ onSave, onCancel }) {
-  const [name, setName]           = useState('')
-  const [location, setLocation]   = useState('')
+const US_STATES = [
+  'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA',
+  'HI','ID','IL','IN','IA','KS','KY','LA','ME','MD',
+  'MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ',
+  'NM','NY','NC','ND','OH','OK','OR','PA','RI','SC',
+  'SD','TN','TX','UT','VT','VA','WA','WV','WI','WY',
+  'DC',
+]
+
+function EventForm({ onSave, onCancel, seasonRaces = [] }) {
+  const [tab,       setTab]       = useState('manual')  // 'manual' | 'bikereg'
+  const [name,      setName]      = useState('')
+  const [city,      setCity]      = useState('')
+  const [stateCode, setStateCode] = useState('')
   const [eventType, setEventType] = useState('Road Race')
-  const [priority, setPriority]   = useState('B Race')
-  const EVENT_TYPES = ['Crit', 'Road Race', 'Time Trial', 'Other']
+  const [priority,  setPriority]  = useState('B Race')
+  const [brSearch,  setBrSearch]  = useState('')
+  const [brRegion,  setBrRegion]  = useState('All')
+  const [brEvents,  setBrEvents]  = useState([])
+  const [brLoading, setBrLoading] = useState(false)
+  const [brError,   setBrError]   = useState(null)
+  const EVENT_TYPES = ['Crit', 'Road Race', 'Time Trial', 'Gran Fondo', 'Other']
   const PRIORITIES  = ['A Race', 'B Race', 'C Race']
   const canSubmit = name.trim().length > 0
+  const location  = [city.trim(), stateCode].filter(Boolean).join(', ')
+  const BR_REGIONS_CAL = ['Northeast', 'New England', 'Mid Atlantic', 'Southeast', 'South Central', 'Midwest', 'Rocky Mountain', 'Northwest', 'Southwest']
+
+  useEffect(() => {
+    if (tab !== 'bikereg') return
+    let cancelled = false
+    setBrLoading(true)
+    setBrError(null)
+    const regions = brRegion === 'All' ? BR_REGIONS_CAL : [brRegion]
+    Promise.all(regions.map(r =>
+      fetch(`http://localhost:3001/api/bikereg/search?region=${encodeURIComponent(r)}`)
+        .then(res => res.ok ? res.json() : res.json().then(b => Promise.reject(b.error || 'Failed')))
+        .then(d => d.events ?? [])
+    ))
+      .then(results => {
+        if (cancelled) return
+        const seen = new Set()
+        const merged = results.flat().filter(e => { if (seen.has(e.id)) return false; seen.add(e.id); return true })
+        merged.sort((a, b) => a.date.localeCompare(b.date))
+        setBrEvents(merged)
+        setBrLoading(false)
+      })
+      .catch(e => { if (!cancelled) { setBrError(String(e)); setBrLoading(false) } })
+    return () => { cancelled = true }
+  }, [tab, brRegion])
+
+  const addedNames = new Set(seasonRaces.map(r => r.name.toLowerCase()))
+  const ROAD_TYPES = new Set(['Criterium', 'Road Race'])
+  const brRawTypes = Array.from(new Set(brEvents.map(e => e.eventType)))
+  const brTypeOptions = ['All', ...Array.from(new Set(brRawTypes.map(t => ROAD_TYPES.has(t) ? 'Road' : t))).sort()]
+  const [brType, setBrType] = useState('All')
+  const q = brSearch.trim().toLowerCase()
+  const brResults = brEvents
+    .filter(e => {
+      const matchType = brType === 'All' || (brType === 'Road' ? ROAD_TYPES.has(e.eventType) : e.eventType === brType)
+      const matchQ = !q || e.name.toLowerCase().includes(q) || e.location.toLowerCase().includes(q)
+      return matchType && matchQ
+    })
+    .sort((a, b) => a.date.localeCompare(b.date))
+
+  // Map BikeReg type names to the app's EventForm type options
+  const BR_TO_APP_TYPE = {
+    Criterium: 'Crit', 'Mountain Bike': 'Other', Cyclocross: 'Other', Track: 'Other', Gravel: 'Other',
+  }
+
+  function fillFromBikeReg(e) {
+    const [loc, st] = e.location.split(', ')
+    setName(e.name)
+    setCity(loc ?? '')
+    setStateCode(st ?? '')
+    setEventType(BR_TO_APP_TYPE[e.eventType] ?? e.eventType)
+    setTab('manual')
+  }
+
   return (
-    <div className="space-y-4">
-      <p className="section-title">New Event</p>
-      <input
-        className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-        style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }}
-        placeholder="Event name (e.g. Tour of Somerville)"
-        value={name} onChange={e => setName(e.target.value)}
-      />
-      <input
-        className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-        style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }}
-        placeholder="Location (e.g. Somerville, NJ)"
-        value={location} onChange={e => setLocation(e.target.value)}
-      />
-      <div>
-        <p className="text-xs font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>Event Type</p>
-        <div className="flex gap-2 flex-wrap">
-          {EVENT_TYPES.map(t => (
-            <button key={t} onClick={() => setEventType(t)}
-              className="px-3 py-1.5 rounded-full text-xs font-medium transition-all"
-              style={{
-                backgroundColor: eventType === t ? '#0A1628' : 'rgba(15,31,28,0.05)',
-                color: eventType === t ? '#fff' : 'var(--color-text)',
-              }}>
-              {t}
-            </button>
-          ))}
+    <div className="space-y-3">
+      {/* Tabs */}
+      <div className="flex gap-0 -mx-1" style={{ borderBottom: 'var(--border)' }}>
+        {[
+          { key: 'manual', label: 'Manual' },
+          { key: 'bikereg', label: 'Find on BikeReg', badge: 'BR' },
+        ].map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium relative"
+            style={{
+              color: tab === t.key ? 'var(--color-text)' : 'var(--color-text-muted)',
+              borderBottom: tab === t.key ? '2px solid #0A1628' : '2px solid transparent',
+              marginBottom: '-1px',
+            }}>
+            {t.label}
+            {t.badge && (
+              <span className="text-[8px] font-bold px-1 py-px rounded"
+                style={{ backgroundColor: '#FF6B00', color: '#fff' }}>{t.badge}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* BikeReg search panel */}
+      {tab === 'bikereg' && (
+        <div className="space-y-2">
+          {/* Region pills */}
+          <div className="flex gap-1 flex-wrap">
+            {['All','Northeast','New England','Mid Atlantic','Southeast','South Central','Midwest','Rocky Mountain','Northwest','Southwest'].map(r => (
+              <button key={r} onClick={() => setBrRegion(r)}
+                className="px-2 py-0.5 rounded-full text-[9px] font-medium transition-all"
+                style={{ backgroundColor: brRegion === r ? '#0A1628' : 'rgba(15,31,28,0.06)', color: brRegion === r ? '#fff' : 'var(--color-text-muted)' }}>
+                {r}
+              </button>
+            ))}
+          </div>
+          <input
+            className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+            style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }}
+            placeholder="Search events or locations…"
+            value={brSearch} onChange={e => setBrSearch(e.target.value)}
+            autoFocus
+          />
+          {/* Type filter pills — derived from loaded events */}
+          {brTypeOptions.length > 1 && (
+            <div className="flex gap-1 flex-wrap">
+              {brTypeOptions.map(t => (
+                <button key={t} onClick={() => setBrType(t)}
+                  className="px-2 py-0.5 rounded-full text-[9px] font-medium transition-all"
+                  style={{ backgroundColor: brType === t ? '#0A1628' : 'rgba(15,31,28,0.06)', color: brType === t ? '#fff' : 'var(--color-text-muted)' }}>
+                  {t}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="space-y-1.5 max-h-52 overflow-y-auto pr-0.5">
+            {brLoading && (
+              <div className="flex items-center justify-center gap-2 py-6">
+                <div className="w-4 h-4 rounded-full border-2 animate-spin"
+                  style={{ borderColor: 'rgba(15,31,28,0.1)', borderTopColor: '#0A1628' }} />
+                <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Loading…</span>
+              </div>
+            )}
+            {!brLoading && brError && (
+              <p className="text-xs text-center py-4" style={{ color: '#E85555' }}>Could not load events. Is the API server running?</p>
+            )}
+            {!brLoading && !brError && brResults.length === 0 && (
+              <p className="text-xs text-center py-4" style={{ color: 'var(--color-text-muted)' }}>No events found.</p>
+            )}
+            {!brLoading && !brError && brResults.map(e => {
+              const isAdded = addedNames.has(e.name.toLowerCase())
+              const d = new Date(e.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+              return (
+                <div key={e.id}
+                  className="rounded-xl px-3 py-2.5 flex items-start justify-between gap-2"
+                  style={{ border: 'var(--border)', backgroundColor: '#FFFFFF' }}>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-xs leading-tight truncate">{e.name}</p>
+                    <p className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                      {d} · {e.eventType}
+                    </p>
+                    <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>📍 {e.location}</p>
+                  </div>
+                  {isAdded ? (
+                    <span className="shrink-0 text-[10px] font-semibold px-2 py-1 rounded-full"
+                      style={{ backgroundColor: 'rgba(0,200,150,0.1)', color: '#00C896' }}>✓ In season</span>
+                  ) : (
+                    <button onClick={ev => { ev.stopPropagation(); fillFromBikeReg(e) }}
+                      className="shrink-0 text-[10px] font-semibold px-2.5 py-1 rounded-full"
+                      style={{ backgroundColor: '#0A1628', color: '#fff' }}>Select</button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button onClick={onCancel}
+              className="flex-1 py-2.5 rounded-full text-sm font-medium"
+              style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text-muted)' }}>Cancel</button>
+          </div>
         </div>
-      </div>
-      <div>
-        <p className="text-xs font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>Race Priority</p>
-        <div className="flex gap-2">
-          {PRIORITIES.map(p => (
-            <button key={p} onClick={() => setPriority(p)}
-              className="flex-1 py-2 rounded-full text-xs font-semibold transition-all"
-              style={{
-                backgroundColor: priority === p ? '#FF2D78' : 'rgba(15,31,28,0.05)',
-                color: priority === p ? '#fff' : 'var(--color-text)',
-              }}>
-              {p}
+      )}
+
+      {/* Manual entry form */}
+      {tab === 'manual' && (
+        <div className="space-y-3">
+          <input
+            className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+            style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }}
+            placeholder="Event name (e.g. Tour of Somerville)"
+            value={name} onChange={e => setName(e.target.value)}
+          />
+          <div className="flex gap-2">
+            <input
+              className="flex-1 rounded-xl px-3 py-2.5 text-sm outline-none"
+              style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }}
+              placeholder="City"
+              value={city} onChange={e => setCity(e.target.value)}
+            />
+            <select
+              value={stateCode} onChange={e => setStateCode(e.target.value)}
+              className="rounded-xl px-3 py-2.5 text-sm outline-none"
+              style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)', color: stateCode ? '#1A2421' : '#637068', width: 80 }}>
+              <option value="">State</option>
+              {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <p className="text-xs font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>Event Type</p>
+            <div className="flex gap-2 flex-wrap">
+              {EVENT_TYPES.map(t => (
+                <button key={t} onClick={() => setEventType(t)}
+                  className="px-3 py-1.5 rounded-full text-xs font-medium transition-all"
+                  style={{
+                    backgroundColor: eventType === t ? '#0A1628' : 'rgba(15,31,28,0.05)',
+                    color: eventType === t ? '#fff' : 'var(--color-text)',
+                  }}>
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>Race Priority</p>
+            <div className="flex gap-2">
+              {PRIORITIES.map(p => (
+                <button key={p} onClick={() => setPriority(p)}
+                  className="flex-1 py-2 rounded-full text-xs font-semibold transition-all"
+                  style={{
+                    backgroundColor: priority === p ? '#FF2D78' : 'rgba(15,31,28,0.05)',
+                    color: priority === p ? '#fff' : 'var(--color-text)',
+                  }}>
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button onClick={onCancel}
+              className="flex-1 py-2.5 rounded-full text-sm font-medium"
+              style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text-muted)' }}>Cancel</button>
+            <button
+              onClick={() => { if (canSubmit) onSave({ type: 'event', name: name.trim(), location, eventType, priority }) }}
+              className="flex-1 py-2.5 rounded-full text-sm font-semibold"
+              style={{ backgroundColor: '#FF2D78', color: '#fff', opacity: canSubmit ? 1 : 0.45 }}>
+              Add event
             </button>
-          ))}
+          </div>
         </div>
-      </div>
-      <div className="flex gap-2 pt-1">
-        <button onClick={onCancel}
-          className="flex-1 py-2.5 rounded-full text-sm font-medium"
-          style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text-muted)' }}>Cancel</button>
-        <button
-          onClick={() => { if (canSubmit) onSave({ type: 'event', name: name.trim(), location, eventType, priority }) }}
-          className="flex-1 py-2.5 rounded-full text-sm font-semibold"
-          style={{ backgroundColor: '#FF2D78', color: '#fff', opacity: canSubmit ? 1 : 0.45 }}>
-          Add event
-        </button>
-      </div>
+      )}
     </div>
   )
 }
@@ -1785,6 +2439,7 @@ const INTERVAL_TYPES = [
   { id: 'warmup',           label: 'Warmup',           desc: 'Gradual ramp from easy to target intensity' },
   { id: 'cooldown',         label: 'Cooldown',         desc: 'Progressive ease-down from working pace' },
   { id: 'recovery',         label: 'Recovery',         desc: 'Sustained easy effort — HR low throughout' },
+  { id: 'hard',             label: 'Hard',             desc: 'Single sustained hard effort block' },
   { id: 'hard_easy',        label: 'Hard-Easy',        desc: 'Alternating work and rest intervals' },
   { id: 'hard_harder_easy', label: 'Hard-Harder-Easy', desc: 'Escalating blocks — hard, harder, recovery' },
   { id: 'ramp_up',          label: 'Ramp Up',          desc: 'Step-wise intensity increases' },
@@ -1798,6 +2453,7 @@ const INTERVAL_DEFAULTS = {
   warmup:           15,
   cooldown:         10,
   recovery:         20,
+  hard:             10,
   hard_easy:        28,
   hard_harder_easy: 24,
   ramp_up:          20,
@@ -1808,6 +2464,7 @@ const INTERVAL_SHAPE = {
   warmup:           [{ dur: 1, v: 0.15 }, { dur: 1, v: 0.30 }, { dur: 1, v: 0.48 }, { dur: 1, v: 0.64 }, { dur: 1, v: 0.78 }],
   cooldown:         [{ dur: 1, v: 0.78 }, { dur: 1, v: 0.64 }, { dur: 1, v: 0.48 }, { dur: 1, v: 0.30 }, { dur: 1, v: 0.15 }],
   recovery:         [{ dur: 1, v: 0.22 }],
+  hard:             [{ dur: 1, v: 0.92 }],
   hard_easy:        [{ dur: 2, v: 0.88 }, { dur: 1.5, v: 0.28 }, { dur: 2, v: 0.88 }, { dur: 1.5, v: 0.28 }],
   hard_harder_easy: [{ dur: 1.5, v: 0.78 }, { dur: 1, v: 0.96 }, { dur: 1.5, v: 0.22 }],
   ramp_up:          [{ dur: 1, v: 0.35 }, { dur: 1, v: 0.52 }, { dur: 1, v: 0.70 }, { dur: 1, v: 0.88 }],
@@ -1815,12 +2472,85 @@ const INTERVAL_SHAPE = {
 }
 
 function zoneColor(v) {
-  if (v < 0.35) return '#00C896'
-  if (v < 0.55) return '#4CC9A0'
-  if (v < 0.70) return '#F5A623'
-  if (v < 0.83) return '#E8803A'
-  if (v < 0.93) return '#E85555'
-  return '#C93030'
+  if (v < 0.56) return '#9CA8A4'   // Z1 — grey
+  if (v < 0.76) return '#4A9EE8'   // Z2 — blue
+  if (v < 0.88) return '#22C55E'   // Z3 — green
+  if (v < 1.06) return '#F5A623'   // Z4 — yellow
+  return '#E85555'                  // Z5+ — red
+}
+
+function fmtDurShort(min) {
+  const totalSec = Math.round(min * 60)
+  const m = Math.floor(totalSec / 60), s = totalSec % 60
+  return s > 0 ? `${m}:${String(s).padStart(2, '0')}` : `${m}m`
+}
+
+function stepDur(val, dir, minVal = 0.25, maxVal = 30) {
+  const step = val < 2 ? 0.25 : val < 5 ? 0.5 : 1
+  return dir > 0 ? Math.min(maxVal, val + step) : Math.max(minVal, val - step)
+}
+
+function fmtDurHMS(min) {
+  const totalSec = Math.round((min ?? 0) * 60)
+  const h = Math.floor(totalSec / 3600)
+  const m = Math.floor((totalSec % 3600) / 60)
+  const s = totalSec % 60
+  return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+function parseDurInput(str, minVal, maxVal) {
+  const t = str.trim()
+  // H:MM:SS
+  const hmsMatch = t.match(/^(\d+):(\d{1,2}):(\d{1,2})$/)
+  if (hmsMatch) {
+    const h = parseInt(hmsMatch[1]), m = parseInt(hmsMatch[2]), s = parseInt(hmsMatch[3])
+    if (m >= 60 || s >= 60) return null
+    const res = h * 60 + m + s / 60
+    return Math.max(minVal, Math.min(maxVal, res))
+  }
+  // M:SS
+  const msMatch = t.match(/^(\d+):(\d{1,2})$/)
+  if (msMatch) {
+    const m = parseInt(msMatch[1]), s = parseInt(msMatch[2])
+    if (s >= 60) return null
+    const res = m + s / 60
+    return Math.max(minVal, Math.min(maxVal, res))
+  }
+  const num = parseFloat(t)
+  if (!isNaN(num) && num > 0) return Math.max(minVal, Math.min(maxVal, num))
+  return null
+}
+
+function DurInput({ val, onChange, minVal = 0.25, maxVal = 30 }) {
+  const displayKey = fmtDurShort(val ?? minVal)
+  const editDefault = fmtDurHMS(val ?? minVal)
+  return (
+    <div className="flex items-center gap-0.5">
+      <button onClick={() => onChange(stepDur(val ?? minVal, -1, minVal, maxVal))}
+        className="w-5 h-5 rounded-full flex items-center justify-center"
+        style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)', fontSize: 12 }}>−</button>
+      <input
+        key={displayKey}
+        type="text"
+        defaultValue={editDefault}
+        className="data-value text-xs font-semibold text-center"
+        style={{ width: '4.5rem', background: 'transparent', border: 'none', borderBottom: '1px solid rgba(15,31,28,0.15)', outline: 'none', color: 'var(--color-text)', padding: '0 2px' }}
+        onFocus={e => e.target.select()}
+        onBlur={e => {
+          const parsed = parseDurInput(e.target.value, minVal, maxVal)
+          if (parsed !== null) onChange(parsed)
+          else e.target.value = editDefault
+        }}
+        onKeyDown={e => {
+          if (e.key === 'Enter') { e.preventDefault(); e.target.blur() }
+          if (e.key === 'Escape') { e.target.value = editDefault; e.target.blur() }
+        }}
+      />
+      <button onClick={() => onChange(stepDur(val ?? minVal, 1, minVal, maxVal))}
+        className="w-5 h-5 rounded-full flex items-center justify-center"
+        style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text)', fontSize: 12 }}>+</button>
+    </div>
+  )
 }
 
 function DropGap({ index, dragOverIndex, setDragOverIndex, onDrop }) {
@@ -1850,9 +2580,10 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
 
   function fmtMin(min) {
     if (!min) return '0m'
-    const h = Math.floor(min / 60), m = min % 60
-    if (h === 0) return `${m}m`
-    return m ? `${h}h ${m}m` : `${h}h`
+    if (min < 1) return `${Math.round(min * 60)}s`
+    const h = Math.floor(min / 60), m = Math.floor(min % 60), s = Math.round((min % 1) * 60)
+    if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`
+    return s > 0 ? `${m}m ${s}s` : `${m}m`
   }
 
   // Returns shape segments for a block, using its live interval config
@@ -1916,6 +2647,7 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
       warmup:           { durationMin: 15, ftpPct: 60 },
       cooldown:         { durationMin: 10, ftpPct: 50 },
       recovery:         { durationMin: 20, ftpPct: 40 },
+      hard:             { durationMin: 10, ftpPct: 105 },
       hard_easy:        { sets: 4, workMin: 4, restMin: 2, workFtpPct: 95, restFtpPct: 55 },
       hard_harder_easy: { sets: 3, hardMin: 3, harderMin: 2, easyMin: 2, hardFtpPct: 85, harderFtpPct: 100, easyFtpPct: 50 },
       ramp_up:          { steps: 4, stepMin: 5, ftpLow: 35, ftpHigh: 88 },
@@ -1935,6 +2667,8 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
   // Preview: flatten all blocks into proportional segments
   const allPreviewSegs = blocks.flatMap(b => getBlockShape(b))
   const previewTotal   = allPreviewSegs.reduce((s, x) => s + x.dur, 0)
+  // Auto-TSS: TSS = sum of (durHours × IF² × 100) per segment, where IF = v (FTP fraction)
+  const autoTSS = Math.round(allPreviewSegs.reduce((s, seg) => s + (seg.dur / 60) * seg.v * seg.v * 100, 0))
   const PH = 52
 
   return (
@@ -2025,12 +2759,12 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
                 const MH    = 24
                 const isStructured = ['hard_easy','hard_harder_easy','ramp_up','ramp_down'].includes(block.type)
 
-                function Stepper({ val, onDec, onInc, suffix = 'm', minW = 'w-8' }) {
+                function Stepper({ val, onDec, onInc, suffix = 'm', minW = 'w-8', isDur = false }) {
                   return (
                     <div className="flex items-center gap-0.5">
                       <button onClick={onDec} className="w-5 h-5 rounded-full flex items-center justify-center"
                         style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)', fontSize: 12 }}>−</button>
-                      <span className={`data-value text-xs font-semibold ${minW} text-center`}>{val}{suffix}</span>
+                      <span className={`data-value text-xs font-semibold ${minW} text-center`}>{isDur ? fmtDurShort(val) : `${val}${suffix}`}</span>
                       <button onClick={onInc} className="w-5 h-5 rounded-full flex items-center justify-center"
                         style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text)', fontSize: 12 }}>+</button>
                     </div>
@@ -2070,11 +2804,11 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
                           <div className="flex items-center gap-4 flex-wrap">
                             <div className="flex items-center gap-1.5">
                               <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>Duration</p>
-                              <Stepper
+                              <DurInput
                                 val={block.durationMin}
-                                onDec={() => updateBlock(block.id, { durationMin: Math.max(5, block.durationMin - 5) })}
-                                onInc={() => updateBlock(block.id, { durationMin: Math.min(120, block.durationMin + 5) })}
-                                minW="w-10"
+                                onChange={v => updateBlock(block.id, { durationMin: v })}
+                                minVal={0.25}
+                                maxVal={180}
                               />
                             </div>
                             <div className="flex items-center gap-1.5">
@@ -2108,15 +2842,13 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
                             <span className="text-xs mt-4" style={{ color: 'var(--color-text-muted)' }}>×</span>
                             <div>
                               <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Work</p>
-                              <Stepper val={block.workMin ?? 4}
-                                onDec={() => updateBlock(block.id, { workMin: Math.max(1, (block.workMin ?? 4) - 1) })}
-                                onInc={() => updateBlock(block.id, { workMin: Math.min(30, (block.workMin ?? 4) + 1) })} />
+                              <DurInput val={block.workMin ?? 4}
+                                onChange={v => updateBlock(block.id, { workMin: v })} />
                             </div>
                             <div>
                               <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Rest</p>
-                              <Stepper val={block.restMin ?? 2}
-                                onDec={() => updateBlock(block.id, { restMin: Math.max(1, (block.restMin ?? 2) - 1) })}
-                                onInc={() => updateBlock(block.id, { restMin: Math.min(20, (block.restMin ?? 2) + 1) })} />
+                              <DurInput val={block.restMin ?? 2}
+                                onChange={v => updateBlock(block.id, { restMin: v })} />
                             </div>
                             <p className="text-[10px] mt-4 data-value" style={{ color: 'var(--color-text-muted)' }}>
                               = {fmtMin(dur)} total
@@ -2155,21 +2887,18 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
                             <span className="text-xs mt-4" style={{ color: 'var(--color-text-muted)' }}>×</span>
                             <div>
                               <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Hard</p>
-                              <Stepper val={block.hardMin ?? 3}
-                                onDec={() => updateBlock(block.id, { hardMin: Math.max(1, (block.hardMin ?? 3) - 1) })}
-                                onInc={() => updateBlock(block.id, { hardMin: Math.min(20, (block.hardMin ?? 3) + 1) })} />
+                              <DurInput val={block.hardMin ?? 3}
+                                onChange={v => updateBlock(block.id, { hardMin: v })} />
                             </div>
                             <div>
                               <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Harder</p>
-                              <Stepper val={block.harderMin ?? 2}
-                                onDec={() => updateBlock(block.id, { harderMin: Math.max(1, (block.harderMin ?? 2) - 1) })}
-                                onInc={() => updateBlock(block.id, { harderMin: Math.min(20, (block.harderMin ?? 2) + 1) })} />
+                              <DurInput val={block.harderMin ?? 2}
+                                onChange={v => updateBlock(block.id, { harderMin: v })} />
                             </div>
                             <div>
                               <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Easy</p>
-                              <Stepper val={block.easyMin ?? 2}
-                                onDec={() => updateBlock(block.id, { easyMin: Math.max(1, (block.easyMin ?? 2) - 1) })}
-                                onInc={() => updateBlock(block.id, { easyMin: Math.min(20, (block.easyMin ?? 2) + 1) })} />
+                              <DurInput val={block.easyMin ?? 2}
+                                onChange={v => updateBlock(block.id, { easyMin: v })} />
                             </div>
                             <p className="text-[10px] mt-4 data-value" style={{ color: 'var(--color-text-muted)' }}>
                               = {fmtMin(dur)} total
@@ -2216,9 +2945,8 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
                             <span className="text-xs mt-4" style={{ color: 'var(--color-text-muted)' }}>×</span>
                             <div>
                               <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Per step</p>
-                              <Stepper val={block.stepMin ?? 5}
-                                onDec={() => updateBlock(block.id, { stepMin: Math.max(1, (block.stepMin ?? 5) - 1) })}
-                                onInc={() => updateBlock(block.id, { stepMin: Math.min(20, (block.stepMin ?? 5) + 1) })} />
+                              <DurInput val={block.stepMin ?? 5}
+                                onChange={v => updateBlock(block.id, { stepMin: v })} />
                             </div>
                             <p className="text-[10px] mt-4 data-value" style={{ color: 'var(--color-text-muted)' }}>
                               = {fmtMin(dur)} total
@@ -2278,7 +3006,15 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
         {/* Workout shape preview */}
         {blocks.length > 0 && (
           <div className="rounded-xl overflow-hidden" style={{ backgroundColor: 'rgba(15,31,28,0.03)', border: 'var(--border)', padding: '10px 12px 8px' }}>
-            <p className="section-title mb-2">Workout shape</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="section-title">Workout shape</p>
+              {autoTSS > 0 && (
+                <span className="data-value text-[11px] font-semibold px-2 py-0.5 rounded-full"
+                  style={{ backgroundColor: 'rgba(0,200,150,0.10)', color: '#00A87E' }}>
+                  ~{autoTSS} TSS
+                </span>
+              )}
+            </div>
             <div style={{ display: 'flex', height: PH + 'px', gap: '2px', alignItems: 'flex-end' }}>
               {allPreviewSegs.map((s, i) => (
                 <div key={i} style={{
@@ -2294,7 +3030,7 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
             <div className="flex items-center justify-between">
               <span className="data-value text-[9px]" style={{ color: 'var(--color-text-muted)' }}>Start</span>
               <div className="flex items-center gap-2.5">
-                {[['#00C896','Z1–Z2'],['#F5A623','Z3'],['#E8803A','Z4'],['#E85555','Z5+']].map(([c,l]) => (
+                {[['#9CA8A4','Z1'],['#4A9EE8','Z2'],['#22C55E','Z3'],['#F5A623','Z4'],['#E85555','Z5+']].map(([c,l]) => (
                   <span key={l} className="flex items-center gap-1 text-[9px]" style={{ color: 'var(--color-text-muted)' }}>
                     <span style={{ width: 6, height: 6, borderRadius: 1, backgroundColor: c, display: 'inline-block' }} />{l}
                   </span>
@@ -2320,7 +3056,7 @@ function WorkoutBuilder({ dateStr, existing, onClose, onSave, ftp = ATHLETE_FTP 
             <span className="text-base">⚡</span> Send to Zwift
           </button>
           <button
-            onClick={() => { if (onSave) onSave({ name, blocks, intensityMode, ftpPct, powerLow, powerHigh, hrPct, hrLow, hrHigh, totalMin }); else onClose() }}
+            onClick={() => { if (onSave) onSave({ name, blocks, intensityMode, ftpPct, powerLow, powerHigh, hrPct, hrLow, hrHigh, totalMin, tss: autoTSS }); else onClose() }}
             className="flex-1 py-2 rounded-full text-sm font-semibold"
             style={{ backgroundColor: 'var(--color-header)', color: 'var(--color-accent)' }}>
             Save workout

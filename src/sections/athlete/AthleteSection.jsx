@@ -1,12 +1,20 @@
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import WeeklyCalendar from './WeeklyCalendar'
 import SeasonSetupModal from './SeasonSetupModal'
 import TrainingAdaptation from './TrainingAdaptation'
+import AnalyticsSection from '../analytics/AnalyticsSection'
 import { fetchActivities } from '../../services/activitiesApi'
+import { getWhoopStatus, getWhoopRecovery, connectWhoop, disconnectWhoop } from '../../services/whoopApi'
 import { useProfile } from '../../context/ProfileContext'
 import Avatar from '../../components/Avatar'
 
-const TABS = ['Overview', 'Training & Racing Calendar']
+function localToday() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
+const TABS = ['Overview', 'Training & Racing Calendar', 'Analytics']
 
 // Shared week data (used by Overview glance + Calendar)
 export const SESSIONS = [
@@ -31,23 +39,188 @@ const DEFAULT_SEASON = {
   races: [],
 }
 
+// ─── Activity detail modal ────────────────────────────────────────────────────
+
+function sourceLabel(src) {
+  if (src === 'zwift')  return 'Zwift'
+  if (src === 'garmin') return 'Garmin'
+  if (src === 'whoop')  return 'Whoop'
+  if (src === 'strava') return 'Strava'
+  return src ?? 'Unknown'
+}
+
+function StatRow({ label, value, unit }) {
+  if (value == null || value === 0 || value === '') return null
+  return (
+    <div className="flex items-baseline justify-between py-2.5" style={{ borderBottom: '0.5px solid rgba(15,31,28,0.08)' }}>
+      <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>{label}</span>
+      <span className="data-value text-sm font-semibold" style={{ color: 'var(--color-text)' }}>
+        {value}{unit ? <span className="font-normal text-xs ml-0.5" style={{ color: 'var(--color-text-muted)' }}>{unit}</span> : null}
+      </span>
+    </div>
+  )
+}
+
+function ActivityDetailModal({ day, onClose }) {
+  const acts = day.all ?? [day.primary]
+  const fmtDate = d => {
+    if (!d) return ''
+    const [y, m, dd] = d.split('-').map(Number)
+    return new Date(y, m - 1, dd).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+  }
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
+      style={{ backgroundColor: 'rgba(15,31,28,0.45)' }}
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full rounded-t-2xl sm:rounded-2xl overflow-y-auto"
+        style={{ backgroundColor: '#FFFFFF', boxShadow: '0 20px 60px rgba(15,31,28,0.25)', maxWidth: 400, maxHeight: '90vh' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-5 py-4" style={{ borderBottom: 'var(--border)' }}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="font-semibold text-base leading-tight" style={{ color: 'var(--color-text)' }}>
+                {acts[0]?.name ?? 'Activity'}
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                {fmtDate(acts[0]?.date)} · {sourceLabel(acts[0]?.source)}
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-sm"
+              style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}
+            >✕</button>
+          </div>
+          {/* Summary pills */}
+          <div className="flex gap-2 mt-3 flex-wrap">
+            <span className="data-value text-xs font-bold px-2.5 py-1 rounded-full"
+              style={{ backgroundColor: 'rgba(0,200,150,0.1)', color: '#00A87E' }}>
+              {day.totalTSS} TSS
+            </span>
+            <span className="data-value text-xs px-2.5 py-1 rounded-full"
+              style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text)' }}>
+              {day.totalDuration}
+            </span>
+            {day.totalDist > 0 && (
+              <span className="data-value text-xs px-2.5 py-1 rounded-full"
+                style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text)' }}>
+                {parseFloat(day.totalDist).toFixed(1)} mi
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="px-5 py-1">
+          {acts.map((act, i) => (
+            <div key={act.id ?? i}>
+              {acts.length > 1 && (
+                <p className="text-[10px] uppercase tracking-widest font-semibold mt-3 mb-1"
+                  style={{ color: 'var(--color-text-muted)' }}>
+                  Activity {i + 1} — {act.name}
+                </p>
+              )}
+              <StatRow label="Duration"          value={act.duration} />
+              <StatRow label="Distance"          value={act.distance_mi ? parseFloat(act.distance_mi).toFixed(1) : null} unit=" mi" />
+              <StatRow label="Elevation"         value={act.elevation_ft ? Math.round(act.elevation_ft) : null} unit=" ft" />
+              <StatRow label="Avg Power"         value={act.avg_power || null} unit=" W" />
+              <StatRow label="Normalized Power"  value={act.normalized_power || null} unit=" W" />
+              <StatRow label="Intensity Factor"  value={act.intensity_factor || null} />
+              <StatRow label="TSS"               value={act.est_tss || null} />
+              <StatRow label="Avg Heart Rate"    value={act.heart_rate || null} unit=" bpm" />
+              <StatRow label="Max Heart Rate"    value={act.max_hr || null} unit=" bpm" />
+              <StatRow label="Avg Cadence"       value={act.cadence || null} unit=" rpm" />
+              <StatRow label="Calories"          value={act.calories || null} unit=" kcal" />
+              <StatRow label="Whoop Strain"      value={act.strain || null} />
+            </div>
+          ))}
+        </div>
+
+        <div className="px-5 pb-5 pt-3">
+          <button
+            onClick={onClose}
+            className="w-full text-sm font-semibold py-2.5 rounded-xl transition-opacity hover:opacity-80 bg-header text-white"
+          >Done</button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
 // ─── Main section ─────────────────────────────────────────────────────────────
+
+const DEFAULT_TODAY_BLOCKS = []
 
 export default function AthleteSection() {
   const { profile, garminStatus } = useProfile()
-  const [activeTab, setActiveTab]     = useState('Overview')
+  const [activeTab, setActiveTab]       = useState('Overview')
   const [highlightDay, setHighlightDay] = useState(null)
-  const [seasonData, setSeasonData]   = useState(DEFAULT_SEASON)
-  const [showSeasonModal, setShowSeasonModal] = useState(false)
+  const [seasonData, setSeasonData]     = useState(DEFAULT_SEASON)
+  const [showSeasonModal, setShowSeasonModal]         = useState(false)
   const [showSeasonDateModal, setShowSeasonDateModal] = useState(false)
   const [activityByDate, setActivityByDate] = useState({})
+  const [todayBlocks, setTodayBlocks]   = useState(DEFAULT_TODAY_BLOCKS)
+  const [planEvents, setPlanEvents]     = useState(() => {
+    try {
+      const todayStr = new Date().toISOString().substring(0, 10)
+      const all = JSON.parse(localStorage.getItem('ciq_user_workouts') ?? '{}')
+      return (all[todayStr] ?? []).filter(w => w.type === 'plan')
+    } catch { return [] }
+  })
+  const [activityModal, setActivityModal] = useState(null) // { all: [...], primary: {...}, ... }
+
+  // Whoop live data — null = not connected / not yet fetched
+  const [whoopStatus, setWhoopStatus] = useState({ connected: false })
+  const [whoopLive,   setWhoopLive]   = useState(null)
+  const [whoopError,  setWhoopError]  = useState(null)
+
+  // On mount: check for OAuth redirect (?whoop=connected or ?whoop_error=...) + fetch status
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const oauthError = params.get('whoop_error')
+    if (oauthError) {
+      setWhoopError(decodeURIComponent(oauthError))
+      window.history.replaceState({}, '', window.location.pathname)
+    } else if (params.get('whoop') === 'connected') {
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+    getWhoopStatus().then(status => {
+      setWhoopStatus(status)
+      if (status.connected) fetchWhoopRecovery()
+    })
+  }, [])
+
+  function fetchWhoopRecovery() {
+    getWhoopRecovery()
+      .then(data => setWhoopLive(data))
+      .catch(() => {})
+  }
+
+  function handleDisconnectWhoop() {
+    disconnectWhoop().then(() => {
+      setWhoopStatus({ connected: false })
+      setWhoopLive(null)
+    })
+  }
 
   useEffect(() => {
     refreshActivities()
   }, [garminStatus.connected])
 
   function refreshActivities() {
-    fetchActivities('2026-06-01', '2026-06-30')
+    const today = new Date()
+    const twoYearsAgo = new Date(today)
+    twoYearsAgo.setFullYear(today.getFullYear() - 2)
+    const start = twoYearsAgo.toISOString().substring(0, 10)
+    const end   = today.toISOString().substring(0, 10)
+    fetchActivities(start, end, profile.ftp)
       .then(data => setActivityByDate(data.byDate || {}))
       .catch(() => {})
   }
@@ -69,6 +242,15 @@ export default function AthleteSection() {
       ...prev,
       races: (prev.races ?? []).filter(r => r.id !== eventId),
     }))
+  }
+
+  function handleAddPlanEvent({ id, date, name }) {
+    const todayStr = new Date().toISOString().substring(0, 10)
+    if (date === todayStr) setPlanEvents(prev => [...prev, { id, name }])
+  }
+
+  function handleRemovePlanEvent(id) {
+    setPlanEvents(prev => prev.filter(e => e.id !== id))
   }
 
   const pageHeader = (
@@ -110,10 +292,20 @@ export default function AthleteSection() {
     </div>
   )
 
+  if (activeTab === 'Analytics') {
+    return (
+      <div className="max-w-6xl w-full mx-auto px-6 pt-6">
+        {pageHeader}
+        {subTabs}
+        <AnalyticsSection embedded />
+      </div>
+    )
+  }
+
   if (activeTab === 'Training & Racing Calendar') {
     return (
       <div className="h-full flex flex-col overflow-hidden">
-        {/* Static: header + tabs + season arc */}
+        {/* Static: header + tabs + season arc — constrained width */}
         <div className="shrink-0 max-w-6xl w-full mx-auto px-6 pt-6">
           {pageHeader}
           {subTabs}
@@ -121,27 +313,33 @@ export default function AthleteSection() {
             <SeasonArc seasonData={seasonData} onEditDates={() => setShowSeasonDateModal(true)} />
           </div>
         </div>
-        {/* Scrollable: calendar only */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-6xl mx-auto px-6 pb-6">
-            <WeeklyCalendar
-              seasonData={seasonData}
-              onSetupSeason={() => setShowSeasonModal(true)}
-              highlightDay={highlightDay}
-              onClearHighlight={() => setHighlightDay(null)}
-              activityByDate={activityByDate}
-              athleteFtp={profile.ftp}
-              readinessScore={WHOOP_DATA.recovery}
-              onAddCalendarEvent={handleAddCalendarEvent}
-              onRemoveCalendarEvent={handleRemoveCalendarEvent}
-            />
-          </div>
+        {/* Calendar fills all remaining height, stretches full width */}
+        <div className="flex-1 overflow-hidden px-4 pb-4">
+          <WeeklyCalendar
+            seasonData={seasonData}
+            onSetupSeason={() => setShowSeasonModal(true)}
+            highlightDay={highlightDay}
+            onClearHighlight={() => setHighlightDay(null)}
+            activityByDate={activityByDate}
+            athleteFtp={profile.ftp}
+            readinessScore={whoopLive?.recovery ?? WHOOP_DATA.recovery}
+            onAddCalendarEvent={handleAddCalendarEvent}
+            onRemoveCalendarEvent={handleRemoveCalendarEvent}
+            onAddPlanEvent={handleAddPlanEvent}
+            onRemovePlanEvent={handleRemovePlanEvent}
+            scheduleBlocks={todayBlocks}
+            onActivitySelect={day => setActivityModal(day)}
+          />
         </div>
         {showSeasonDateModal && (
-          <SeasonDateModal
+          <SeasonViewModal
             season={seasonData.season}
+            races={seasonData.races ?? []}
             onClose={() => setShowSeasonDateModal(false)}
-            onSave={season => { setSeasonData(prev => ({ ...prev, season })); setShowSeasonDateModal(false) }}
+            onSaveDates={season => setSeasonData(prev => ({ ...prev, season }))}
+            onAddRace={race => setSeasonData(prev => ({ ...prev, races: [...(prev.races ?? []), { id: Date.now(), ...race }] }))}
+            onRemoveRace={id => setSeasonData(prev => ({ ...prev, races: (prev.races ?? []).filter(r => r.id !== id) }))}
+            onUpdateRace={updates => setSeasonData(prev => ({ ...prev, races: (prev.races ?? []).map(r => r.id === updates.id ? { ...r, ...updates } : r) }))}
           />
         )}
         {showSeasonModal && (
@@ -149,6 +347,9 @@ export default function AthleteSection() {
             onClose={() => setShowSeasonModal(false)}
             onConfirm={data => { setSeasonData(data); setShowSeasonModal(false) }}
           />
+        )}
+        {activityModal && (
+          <ActivityDetailModal day={activityModal} onClose={() => setActivityModal(null)} />
         )}
       </div>
     )
@@ -158,11 +359,27 @@ export default function AthleteSection() {
     <div className="max-w-6xl mx-auto px-6 py-6">
       {pageHeader}
       {subTabs}
+      {whoopError && (
+        <div
+          className="mb-4 px-4 py-3 rounded-xl text-sm flex items-center justify-between"
+          style={{ backgroundColor: 'rgba(232,85,85,0.1)', color: '#E85555', border: '0.5px solid rgba(232,85,85,0.25)' }}
+        >
+          <span><strong>Whoop connection failed:</strong> {whoopError}</span>
+          <button onClick={() => setWhoopError(null)} className="ml-4 opacity-60 hover:opacity-100">✕</button>
+        </div>
+      )}
       {activeTab === 'Overview' && (
         <OverviewTab
           seasonData={seasonData}
           onSetupSeason={() => setShowSeasonModal(true)}
           onDayClick={goToCalendar}
+          todayBlocks={todayBlocks}
+          setTodayBlocks={setTodayBlocks}
+          planEvents={planEvents}
+          whoopStatus={whoopStatus}
+          whoopLive={whoopLive}
+          onConnectWhoop={connectWhoop}
+          onDisconnectWhoop={handleDisconnectWhoop}
         />
       )}
       {showSeasonModal && (
@@ -194,7 +411,7 @@ export function SeasonArc({ seasonData, onEditDates, onSetupSeason, onRaceClick 
     )
   }
 
-  const today = new Date(new Date().toISOString().slice(0, 10))
+  const today = new Date(localToday())
   const start = new Date(seasonData.season.start)
   const end   = new Date(seasonData.season.end)
   const totalMs = end - start
@@ -223,55 +440,72 @@ export function SeasonArc({ seasonData, onEditDates, onSetupSeason, onRaceClick 
 
   const next = upcoming[0] ?? null
 
+  function fmtBarDate(dateStr) {
+    return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  }
+
   return (
     <div className="flex items-center gap-3">
       <span className="section-title whitespace-nowrap">Season</span>
-      <div className="flex-1 relative h-1.5 rounded-full" style={{ backgroundColor: 'rgba(15,31,28,0.08)' }}>
-        <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, backgroundColor: '#FF2D78' }} />
-        {/* Event/race dot markers */}
-        {(seasonData.races ?? []).map((r, i) => {
-          const rp = racePct(r.date)
-          const isA = r.priority === 'A race'
-          return (
-            <span
-              key={r.id ?? i}
-              title={`${r.name} · ${r.date}`}
-              style={{
-                position: 'absolute', top: '50%', transform: 'translateY(-50%)',
-                left: `${rp}%`, marginLeft: '-4px',
-                width: isA ? '10px' : '7px',
-                height: isA ? '10px' : '7px',
-                borderRadius: '50%',
-                backgroundColor: isA ? '#FF2D78' : 'rgba(15,31,28,0.35)',
-                border: '2px solid white',
-                display: 'inline-block',
-                zIndex: 1,
-              }}
-            />
-          )
-        })}
-        {/* Today marker */}
-        <span
-          className="absolute top-1/2 -translate-y-1/2"
-          style={{
-            left: `${pct}%`, marginLeft: '-4px',
-            width: '8px', height: '8px', borderRadius: '50%',
-            backgroundColor: '#FF2D78', border: '2px solid white',
-            display: 'inline-block', zIndex: 2,
-          }}
-        />
+
+      {/* Timeline bar + date labels */}
+      <div className="flex-1 min-w-0">
+        <div className="relative h-1.5 rounded-full" style={{ backgroundColor: 'rgba(15,31,28,0.08)' }}>
+          <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, backgroundColor: '#FF2D78' }} />
+          {/* Race dot markers */}
+          {(seasonData.races ?? []).map((r, i) => {
+            const rp   = racePct(r.date)
+            const isA  = r.priority === 'A Race'
+            const past = r.date <= localToday()
+            const size = isA ? '10px' : '7px'
+            return (
+              <span
+                key={r.id ?? i}
+                title={`${r.name} · ${r.date}`}
+                style={{
+                  position: 'absolute', top: '50%', transform: 'translateY(-50%)',
+                  left: `${rp}%`, marginLeft: past ? '-5px' : '-4px',
+                  width: past ? size : (isA ? '10px' : '7px'),
+                  height: past ? size : (isA ? '10px' : '7px'),
+                  borderRadius: '50%',
+                  backgroundColor: past ? '#FF2D78' : 'rgba(15,31,28,0.22)',
+                  border: `2px solid white`,
+                  display: 'inline-block',
+                  zIndex: 1,
+                }}
+              />
+            )
+          })}
+          {/* Today marker */}
+          <span
+            className="absolute top-1/2 -translate-y-1/2"
+            style={{
+              left: `${pct}%`, marginLeft: '-4px',
+              width: '8px', height: '8px', borderRadius: '50%',
+              backgroundColor: '#FF2D78', border: '2px solid white',
+              display: 'inline-block', zIndex: 2,
+            }}
+          />
+        </div>
+        {/* Start / end date labels */}
+        <div className="flex justify-between mt-0.5">
+          <span className="data-value text-[9px]" style={{ color: 'var(--color-text-muted)' }}>
+            {fmtBarDate(seasonData.season.start)}
+          </span>
+          <span className="data-value text-[9px]" style={{ color: 'var(--color-text-muted)' }}>
+            {fmtBarDate(seasonData.season.end)}
+          </span>
+        </div>
       </div>
-      <div className="flex items-center gap-3 shrink-0">
+
+      <div className="flex items-center gap-2 shrink-0">
         {next && (
           <div className="flex items-center gap-1.5">
-            <span
-              className="data-value text-xs font-semibold"
-              style={{ color: '#FF2D78' }}
-            >
+            <span className="data-value text-xs font-semibold truncate max-w-[90px]" style={{ color: '#FF2D78' }}>
               {next.name}
             </span>
             <span
-              className="data-value text-[11px] px-1.5 py-0.5 rounded-full font-medium"
+              className="data-value text-[11px] px-1.5 py-0.5 rounded-full font-medium shrink-0"
               style={{ backgroundColor: 'rgba(255,45,120,0.10)', color: '#FF2D78' }}
             >
               {countdownLabel(next.days)}
@@ -280,20 +514,97 @@ export function SeasonArc({ seasonData, onEditDates, onSetupSeason, onRaceClick 
         )}
         <button
           onClick={onEditDates ?? onSetupSeason}
-          className="text-[11px] px-2 py-0.5 rounded-full transition-colors"
+          className="text-[11px] px-2.5 py-1 rounded-full font-medium transition-colors shrink-0"
           style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text-muted)', border: 'var(--border)' }}
         >
-          Edit
+          View My Season
         </button>
       </div>
     </div>
   )
 }
 
-function SeasonDateModal({ season, onClose, onSave }) {
+const EVENT_TYPES = ['Crit', 'Road Race', 'Time Trial', 'Gran Fondo', 'Other']
+const PRIORITIES  = ['A Race', 'B Race', 'C Race']
+
+const BR_REGIONS = ['Northeast', 'New England', 'Mid Atlantic', 'Southeast', 'South Central', 'Midwest', 'Rocky Mountain', 'Northwest', 'Southwest']
+
+function SeasonViewModal({ season, races, onClose, onSaveDates, onAddRace, onRemoveRace, onUpdateRace }) {
+  const [activeTab, setActiveTab] = useState('my_races')
   const [start, setStart] = useState(season?.start ?? '')
   const [end,   setEnd]   = useState(season?.end   ?? '')
-  const canSave = start && end && new Date(start) < new Date(end)
+  const [editingDates, setEditingDates] = useState(!season?.start || !season?.end)
+  const canSaveDates = start && end && new Date(start) < new Date(end)
+
+  // BikeReg browser state
+  const [brSearch,      setBrSearch]      = useState('')
+  const [brType,        setBrType]        = useState('All')
+  const [brRegion,      setBrRegion]      = useState('All')
+  const [brEvents,      setBrEvents]      = useState([])
+  const [brLoading,     setBrLoading]     = useState(false)
+  const [brError,       setBrError]       = useState(null)
+  const [pendingAddId,  setPendingAddId]  = useState(null)
+  const [pendingPri,    setPendingPri]    = useState('B Race')
+
+  useEffect(() => {
+    if (activeTab !== 'find_races') return
+    let cancelled = false
+    setBrLoading(true)
+    setBrError(null)
+    const regions = brRegion === 'All' ? BR_REGIONS : [brRegion]
+    Promise.all(regions.map(r =>
+      fetch(`http://localhost:3001/api/bikereg/search?region=${encodeURIComponent(r)}`)
+        .then(res => res.ok ? res.json() : res.json().then(b => Promise.reject(b.error || 'Failed')))
+        .then(d => d.events ?? [])
+    ))
+      .then(results => {
+        if (cancelled) return
+        const seen = new Set()
+        const merged = results.flat().filter(e => { if (seen.has(e.id)) return false; seen.add(e.id); return true })
+        merged.sort((a, b) => a.date.localeCompare(b.date))
+        setBrEvents(merged)
+        setBrLoading(false)
+      })
+      .catch(e => { if (!cancelled) { setBrError(String(e)); setBrLoading(false) } })
+    return () => { cancelled = true }
+  }, [activeTab, brRegion])
+
+  // New event form state
+  const [adding,    setAdding]    = useState(false)
+  const [evtName,   setEvtName]   = useState('')
+  const [evtDate,   setEvtDate]   = useState('')
+  const [evtLoc,    setEvtLoc]    = useState('')
+  const [evtType,   setEvtType]   = useState('Road Race')
+  const [evtPri,    setEvtPri]    = useState('B Race')
+  const canAddEvt = evtName.trim().length > 0 && evtDate.length > 0
+
+  function handleSaveDates() {
+    if (!canSaveDates) return
+    onSaveDates({ start, end })
+    setEditingDates(false)
+  }
+
+  function handleAddEvent() {
+    if (!canAddEvt) return
+    onAddRace({ name: evtName.trim(), date: evtDate, location: evtLoc.trim(), eventType: evtType, priority: evtPri })
+    setEvtName(''); setEvtDate(''); setEvtLoc(''); setEvtType('Road Race'); setEvtPri('B Race')
+    setAdding(false)
+  }
+
+  const sortedRaces = [...races].sort((a, b) => a.date.localeCompare(b.date))
+
+  const addedNames = new Set(races.map(r => r.name.toLowerCase()))
+  const ROAD_TYPES = new Set(['Criterium', 'Road Race'])
+  const rawTypes = Array.from(new Set(brEvents.map(e => e.eventType)))
+  const brTypeOptions = ['All', ...Array.from(new Set(rawTypes.map(t => ROAD_TYPES.has(t) ? 'Road' : t))).sort()]
+  const todayIso = localToday()
+  const filteredBR = brEvents.filter(e => {
+    if (!e.date || e.date < todayIso) return false
+    const matchType   = brType === 'All' || (brType === 'Road' ? ROAD_TYPES.has(e.eventType) : e.eventType === brType)
+    const q = brSearch.trim().toLowerCase()
+    const matchSearch = !q || e.name.toLowerCase().includes(q) || e.location.toLowerCase().includes(q)
+    return matchType && matchSearch
+  }).sort((a, b) => a.date.localeCompare(b.date))
 
   return (
     <div
@@ -301,36 +612,409 @@ function SeasonDateModal({ season, onClose, onSave }) {
       style={{ backgroundColor: 'rgba(10,22,40,0.55)', backdropFilter: 'blur(4px)' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="w-full max-w-sm rounded-2xl p-6 relative" style={{ backgroundColor: '#FFFFFF', boxShadow: '0 8px 40px rgba(15,31,28,0.16)' }}>
-        <button onClick={onClose}
-          className="absolute top-5 right-5 w-7 h-7 rounded-full flex items-center justify-center text-sm"
-          style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}>✕</button>
-        <p className="font-semibold text-base mb-1">Season dates</p>
-        <p className="text-xs mb-5" style={{ color: 'var(--color-text-muted)' }}>Set the start and end of your racing season.</p>
-        <div className="space-y-4">
-          <div>
-            <p className="section-title mb-1.5">Season start</p>
-            <input type="date" value={start} onChange={e => setStart(e.target.value)}
-              className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-              style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }} />
+      <div className="w-full max-w-md rounded-2xl relative flex flex-col overflow-hidden"
+        style={{ backgroundColor: '#FFFFFF', boxShadow: '0 8px 40px rgba(15,31,28,0.16)', maxHeight: '90vh' }}>
+
+        {/* Header */}
+        <div className="px-6 pt-5 pb-0 shrink-0">
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <p className="font-semibold text-base">Season Races</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                {start && end
+                  ? `${new Date(start + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${new Date(end + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+                  : 'Manage your racing season'}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {start && end && (
+                <button onClick={() => setEditingDates(v => !v)}
+                  className="text-[11px] font-medium px-2.5 py-1 rounded-full"
+                  style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text-muted)', border: 'var(--border)' }}>
+                  {editingDates ? 'Cancel' : 'Edit dates'}
+                </button>
+              )}
+              <button onClick={onClose}
+                className="w-7 h-7 rounded-full flex items-center justify-center text-sm"
+                style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}>✕</button>
+            </div>
           </div>
-          <div>
-            <p className="section-title mb-1.5">Season end</p>
-            <input type="date" value={end} onChange={e => setEnd(e.target.value)}
-              className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-              style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }} />
+
+          {/* Inline date editor */}
+          {editingDates && (
+            <div className="mb-4 rounded-xl p-3 space-y-3" style={{ backgroundColor: 'rgba(15,31,28,0.03)', border: 'var(--border)' }}>
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <p className="text-[11px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Season start</p>
+                  <input type="date" value={start} onChange={e => setStart(e.target.value)}
+                    className="w-full rounded-xl px-3 py-2 text-sm outline-none"
+                    style={{ border: 'var(--border)', backgroundColor: '#FFFFFF' }} />
+                </div>
+                <div className="flex-1">
+                  <p className="text-[11px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Season end</p>
+                  <input type="date" value={end} onChange={e => setEnd(e.target.value)}
+                    className="w-full rounded-xl px-3 py-2 text-sm outline-none"
+                    style={{ border: 'var(--border)', backgroundColor: '#FFFFFF' }} />
+                </div>
+              </div>
+              <button onClick={handleSaveDates}
+                className="w-full py-2 rounded-full text-sm font-semibold"
+                style={{ backgroundColor: canSaveDates ? '#0A1628' : 'rgba(15,31,28,0.1)', color: canSaveDates ? '#fff' : 'var(--color-text-muted)', cursor: canSaveDates ? 'pointer' : 'not-allowed' }}>
+                Save dates
+              </button>
+            </div>
+          )}
+
+          {/* Tabs */}
+          <div className="flex gap-0" style={{ borderBottom: 'var(--border)' }}>
+            {[
+              { key: 'my_races', label: `My Races${races.length > 0 ? ` (${races.length})` : ''}` },
+              { key: 'find_races', label: 'Find Races', badge: 'BR' },
+            ].map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors relative"
+                style={{
+                  color: activeTab === tab.key ? 'var(--color-text)' : 'var(--color-text-muted)',
+                  borderBottom: activeTab === tab.key ? '2px solid #0A1628' : '2px solid transparent',
+                  marginBottom: '-1px',
+                }}
+              >
+                {tab.label}
+                {tab.badge && (
+                  <span className="text-[9px] font-bold px-1 py-px rounded"
+                    style={{ backgroundColor: '#FF6B00', color: '#fff', letterSpacing: '0.02em' }}>
+                    {tab.badge}
+                  </span>
+                )}
+              </button>
+            ))}
           </div>
         </div>
-        <div className="flex gap-2 mt-6">
-          <button onClick={onClose}
-            className="flex-1 py-2 rounded-full text-sm font-medium"
-            style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text-muted)' }}>Cancel</button>
-          <button onClick={() => canSave && onSave({ start, end })}
-            className="flex-1 py-2 rounded-full text-sm font-semibold"
-            style={{ backgroundColor: canSave ? '#0A1628' : 'rgba(15,31,28,0.1)', color: canSave ? '#fff' : 'var(--color-text-muted)', cursor: canSave ? 'pointer' : 'not-allowed' }}>
-            Save
-          </button>
-        </div>
+
+        {/* Find Races tab — BikeReg explorer */}
+        {activeTab === 'find_races' && (
+          <div className="flex-1 overflow-y-auto flex flex-col">
+            {/* Region + Search + filter */}
+            <div className="px-4 pt-4 pb-3 shrink-0 space-y-2.5" style={{ borderBottom: 'var(--border)' }}>
+              {/* Region selector */}
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] shrink-0" style={{ color: 'var(--color-text-muted)' }}>Region</span>
+                <div className="flex gap-1.5 flex-wrap flex-1">
+                  {['All', ...BR_REGIONS].map(r => (
+                    <button key={r} onClick={() => setBrRegion(r)}
+                      className="px-2 py-0.5 rounded-full text-[10px] font-medium transition-all"
+                      style={{ backgroundColor: brRegion === r ? '#0A1628' : 'rgba(15,31,28,0.06)', color: brRegion === r ? '#fff' : 'var(--color-text-muted)' }}>
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <input
+                className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+                style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }}
+                placeholder="Search events or locations…"
+                value={brSearch} onChange={e => setBrSearch(e.target.value)}
+                autoFocus
+              />
+              <div className="flex gap-1.5 flex-wrap">
+                {brTypeOptions.map(t => (
+                  <button key={t} onClick={() => setBrType(t)}
+                    className="px-2.5 py-1 rounded-full text-xs font-medium transition-all"
+                    style={{ backgroundColor: brType === t ? '#0A1628' : 'rgba(15,31,28,0.06)', color: brType === t ? '#fff' : 'var(--color-text)' }}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Event list */}
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+              {brLoading && (
+                <div className="flex flex-col items-center py-10 gap-2">
+                  <div className="w-5 h-5 rounded-full border-2 animate-spin"
+                    style={{ borderColor: 'rgba(15,31,28,0.1)', borderTopColor: '#0A1628' }} />
+                  <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Loading from BikeReg…</p>
+                </div>
+              )}
+              {!brLoading && brError && (
+                <div className="text-center py-8">
+                  <p className="text-xs font-medium" style={{ color: '#E85555' }}>Could not load events</p>
+                  <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-muted)' }}>Make sure the API server is running</p>
+                </div>
+              )}
+              {!brLoading && !brError && filteredBR.length === 0 && (
+                <p className="text-xs text-center py-8" style={{ color: 'var(--color-text-muted)' }}>No events match your search.</p>
+              )}
+              {!brLoading && !brError && filteredBR.map(e => {
+                const isAdded   = addedNames.has(e.name.toLowerCase())
+                const isPending = pendingAddId === e.id
+                const d = new Date(e.date + 'T12:00:00')
+                const dateStr   = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                return (
+                  <div key={e.id} className="rounded-xl px-3 py-3"
+                    style={{ border: isPending ? '1px solid #0A1628' : 'var(--border)', backgroundColor: '#FFFFFF', boxShadow: '0 1px 4px rgba(15,31,28,0.05)' }}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm leading-tight truncate" style={{ color: 'var(--color-text)' }}>{e.name}</p>
+                        <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>📍 {e.location}</p>
+                      </div>
+                      {isAdded ? (
+                        <span className="shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold"
+                          style={{ backgroundColor: 'rgba(0,200,150,0.1)', color: '#00C896' }}>✓ Added</span>
+                      ) : isPending ? (
+                        <button onClick={() => setPendingAddId(null)}
+                          className="shrink-0 text-xs"
+                          style={{ color: 'var(--color-text-muted)' }}>Cancel</button>
+                      ) : (
+                        <button onClick={() => { setPendingAddId(e.id); setPendingPri('B Race') }}
+                          className="shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold"
+                          style={{ backgroundColor: '#0A1628', color: '#fff' }}>+ Add</button>
+                      )}
+                    </div>
+
+                    {/* Priority picker — shown when pending */}
+                    {isPending && (
+                      <div className="mt-3 pt-3" style={{ borderTop: 'var(--border)' }}>
+                        <p className="text-[11px] mb-2" style={{ color: 'var(--color-text-muted)' }}>Priority for your season</p>
+                        <div className="flex gap-1.5 mb-3">
+                          {PRIORITIES.map(p => {
+                            const pc = p === 'A Race' ? '#FF2D78' : p === 'B Race' ? '#F5A623' : '#637068'
+                            const active = pendingPri === p
+                            return (
+                              <button key={p} onClick={() => setPendingPri(p)}
+                                className="flex-1 py-1.5 rounded-full text-xs font-semibold transition-all"
+                                style={{ backgroundColor: active ? pc : 'rgba(15,31,28,0.06)', color: active ? '#fff' : 'var(--color-text)' }}>
+                                {p}
+                              </button>
+                            )
+                          })}
+                        </div>
+                        <button onClick={() => {
+                          onAddRace({ name: e.name, date: e.date, location: e.location, eventType: e.eventType, priority: pendingPri, url: e.url, registered: false })
+                          setPendingAddId(null)
+                          setActiveTab('my_races')
+                        }}
+                          className="w-full py-2 rounded-full text-sm font-semibold"
+                          style={{ backgroundColor: '#0A1628', color: '#fff' }}>
+                          Add to My Races
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                      <span className="data-value text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{dateStr}</span>
+                      <span style={{ color: 'var(--color-text-muted)', fontSize: 10 }}>·</span>
+                      <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{e.eventType}</span>
+                      {e.isSeries && (
+                        <>
+                          <span style={{ color: 'var(--color-text-muted)', fontSize: 10 }}>·</span>
+                          <span className="text-[9px] font-semibold px-1.5 py-px rounded"
+                            style={{ backgroundColor: 'rgba(99,112,104,0.1)', color: 'var(--color-text-muted)', letterSpacing: '0.03em' }}>
+                            SERIES
+                          </span>
+                        </>
+                      )}
+                      {e.url && (
+                        <>
+                          <span style={{ color: 'var(--color-text-muted)', fontSize: 10 }}>·</span>
+                          <a href={e.url} target="_blank" rel="noopener noreferrer"
+                            className="text-[10px] font-medium" style={{ color: '#FF6B00' }}>bikereg.com →</a>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* My Races tab */}
+        {activeTab === 'my_races' && <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+
+          {/* Events list */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <p className="section-title">Events &amp; Races</p>
+              <div className="flex items-center gap-2">
+                {!adding && (
+                  <button onClick={() => setAdding(true)}
+                    className="text-[11px] font-semibold px-2.5 py-1 rounded-full"
+                    style={{ backgroundColor: 'rgba(255,45,120,0.08)', color: '#FF2D78' }}>
+                    + Add manually
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {sortedRaces.length === 0 && !adding && (
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>No events yet. Add your first race above.</p>
+            )}
+
+            <div className="space-y-3">
+              {sortedRaces.map(r => {
+                const priColor = r.priority === 'A Race' ? '#FF2D78' : r.priority === 'B Race' ? '#F5A623' : '#637068'
+                const priBg    = r.priority === 'A Race' ? 'rgba(255,45,120,0.08)' : r.priority === 'B Race' ? 'rgba(245,166,35,0.10)' : 'rgba(99,112,104,0.08)'
+                const d        = new Date(r.date + 'T12:00:00')
+                const today    = new Date(localToday())
+                const days     = Math.ceil((d - today) / 86400000)
+                const dateLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+                const countdown = days < 0 ? { text: 'Past', color: 'var(--color-text-muted)' }
+                  : days === 0 ? { text: 'Today', color: '#FF2D78' }
+                  : days <= 14 ? { text: `${days}d away`, color: '#E85555' }
+                  : days <= 60 ? { text: `${days}d away`, color: '#F5A623' }
+                  : { text: `${days}d away`, color: 'var(--color-text-muted)' }
+                return (
+                  <div key={r.id} className="rounded-2xl overflow-hidden"
+                    style={{ border: 'var(--border)', backgroundColor: '#FFFFFF', boxShadow: '0 2px 8px rgba(15,31,28,0.08), 0 1px 3px rgba(15,31,28,0.06)' }}>
+                    <div className="px-4 py-3">
+                      {/* Name row */}
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <p className="font-semibold text-sm leading-tight" style={{ color: 'var(--color-text)' }}>{r.name}</p>
+                        <button onClick={() => onRemoveRace(r.id)}
+                          className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-xs mt-0.5"
+                          style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}>✕</button>
+                      </div>
+                      {/* Chips row */}
+                      <div className="flex items-center gap-1.5 flex-wrap mb-2.5">
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                          style={{ backgroundColor: priBg, color: priColor }}>
+                          {r.priority ?? 'Unrated'}
+                        </span>
+                        {r.eventType && (
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+                            style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text-muted)' }}>
+                            {r.eventType}
+                          </span>
+                        )}
+                        {r.location && (
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+                            style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text-muted)' }}>
+                            📍 {r.location}
+                          </span>
+                        )}
+                        {/* Registration status badge */}
+                        {r.registered ? (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                            style={{ backgroundColor: 'rgba(0,200,150,0.08)', color: '#00C896', border: '1px solid rgba(0,200,150,0.2)' }}>
+                            ✓ Registered
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                            style={{ backgroundColor: 'rgba(245,158,11,0.1)', color: '#D97706', border: '1px solid rgba(245,158,11,0.25)' }}>
+                            ⚠ Not Registered
+                          </span>
+                        )}
+                      </div>
+                      {/* Date + countdown */}
+                      <div className="flex items-center justify-between mb-2.5">
+                        <span className="data-value text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{dateLabel}</span>
+                        <span className="data-value text-[11px] font-semibold" style={{ color: countdown.color }}>{countdown.text}</span>
+                      </div>
+                      {/* Registration action row */}
+                      <div className="flex items-center justify-between pt-2.5" style={{ borderTop: 'var(--border)' }}>
+                        <button
+                          onClick={() => onUpdateRace({ id: r.id, registered: !r.registered })}
+                          className="flex items-center gap-1.5 text-[11px] font-medium rounded-full px-2.5 py-1 transition-all"
+                          style={{
+                            backgroundColor: r.registered ? 'rgba(0,200,150,0.08)' : 'rgba(245,158,11,0.08)',
+                            color: r.registered ? '#00C896' : '#D97706',
+                          }}>
+                          <span>{r.registered ? '✓ Mark unregistered' : '○ Mark as registered'}</span>
+                        </button>
+                        {r.url && !r.registered && (
+                          <a href={r.url} target="_blank" rel="noopener noreferrer"
+                            className="text-[11px] font-semibold"
+                            style={{ color: '#FF6B00' }}>
+                            Register on BikeReg →
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Inline add form */}
+            {adding && (
+              <div className="mt-3 rounded-xl p-4 space-y-3" style={{ backgroundColor: 'rgba(15,31,28,0.03)', border: 'var(--border)' }}>
+                <p className="text-xs font-semibold" style={{ color: 'var(--color-text)' }}>New event</p>
+                <input
+                  className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+                  style={{ border: 'var(--border)', backgroundColor: '#FFFFFF' }}
+                  placeholder="Event name (e.g. Tour of Somerville)"
+                  value={evtName} onChange={e => setEvtName(e.target.value)}
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <p className="text-[11px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Date</p>
+                    <input type="date" value={evtDate} onChange={e => setEvtDate(e.target.value)}
+                      className="w-full rounded-xl px-3 py-2 text-sm outline-none"
+                      style={{ border: 'var(--border)', backgroundColor: '#FFFFFF' }} />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-[11px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Location</p>
+                    <input
+                      className="w-full rounded-xl px-3 py-2 text-sm outline-none"
+                      style={{ border: 'var(--border)', backgroundColor: '#FFFFFF' }}
+                      placeholder="City, State"
+                      value={evtLoc} onChange={e => setEvtLoc(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[11px] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>Type</p>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {EVENT_TYPES.map(t => (
+                      <button key={t} onClick={() => setEvtType(t)}
+                        className="px-2.5 py-1 rounded-full text-xs font-medium transition-all"
+                        style={{ backgroundColor: evtType === t ? '#0A1628' : 'rgba(15,31,28,0.06)', color: evtType === t ? '#fff' : 'var(--color-text)' }}>
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[11px] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>Priority</p>
+                  <div className="flex gap-1.5">
+                    {PRIORITIES.map(p => (
+                      <button key={p} onClick={() => setEvtPri(p)}
+                        className="flex-1 py-1.5 rounded-full text-xs font-semibold transition-all"
+                        style={{ backgroundColor: evtPri === p ? '#FF2D78' : 'rgba(15,31,28,0.06)', color: evtPri === p ? '#fff' : 'var(--color-text)' }}>
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button onClick={() => setAdding(false)}
+                    className="flex-1 py-2 rounded-full text-sm font-medium"
+                    style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text-muted)' }}>Cancel</button>
+                  <button onClick={handleAddEvent}
+                    className="flex-1 py-2 rounded-full text-sm font-semibold"
+                    style={{ backgroundColor: '#FF2D78', color: '#fff', opacity: canAddEvt ? 1 : 0.4, cursor: canAddEvt ? 'pointer' : 'not-allowed' }}>
+                    Add event
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>}
+
+        {/* Footer — only on My Races tab */}
+        {activeTab === 'my_races' && (
+          <div className="px-6 py-4 shrink-0" style={{ borderTop: 'var(--border)' }}>
+            <button onClick={onClose}
+              className="w-full py-2.5 rounded-full text-sm font-semibold"
+              style={{ backgroundColor: '#0A1628', color: '#fff' }}>
+              Done
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -357,6 +1041,13 @@ function readinessColor(score) {
   if (score >= 75) return { stroke: '#00C896', text: '#00A87E', bg: 'rgba(0,200,150,0.08)' }
   if (score >= 50) return { stroke: '#F5A623', text: '#B87000', bg: 'rgba(245,166,35,0.08)' }
   return               { stroke: '#E85555', text: '#C94444', bg: 'rgba(232,85,85,0.08)' }
+}
+
+// Matches Whoop's own green/yellow/red thresholds
+function whoopRecoveryColor(score) {
+  if (score >= 67) return { bg: 'rgba(0,200,150,0.18)',  text: '#00C896' }
+  if (score >= 34) return { bg: 'rgba(245,166,35,0.18)', text: '#F5A623' }
+  return                  { bg: 'rgba(232,85,85,0.18)',  text: '#E85555' }
 }
 
 function readinessLabel(score) {
@@ -593,11 +1284,11 @@ function MiniTimeline({ wake, bed, blocks, windows, dark = false }) {
          :                       'rgba(255,255,255,0.07)',     // filler
   })) : rawSegs
 
-  const labelSegs = segs.filter(s => s.kind === 'gap' && s.label && (s.end - s.start) / span >= 0.07)
+  const labelSegs = segs.filter(s => s.kind === 'gap' && s.label)
   const [hoveredIdx, setHoveredIdx] = useState(null)
 
-  const labelColor     = dark ? 'rgba(0,200,150,0.90)' : '#004d35'
-  const subLabelColor  = dark ? 'rgba(0,200,150,0.60)' : '#006644'
+  const labelColor     = dark ? 'rgba(255,255,255,0.90)' : '#004d35'
+  const subLabelColor  = dark ? 'rgba(255,255,255,0.60)' : '#006644'
   const timeLabelColor = dark ? 'rgba(255,255,255,0.30)' : 'rgba(15,31,28,0.30)'
 
   return (
@@ -612,8 +1303,8 @@ function MiniTimeline({ wake, bed, blocks, windows, dark = false }) {
           ))}
         </div>
 
-        {/* Layer 2 — gap labels, also clipped */}
-        <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
+        {/* Layer 2 — gap labels, overflow visible so narrow segments still show full text */}
+        <div className="absolute inset-0 pointer-events-none" style={{ overflow: 'visible' }}>
           {labelSegs.map((s, i) => {
             const centerPct = ((s.start + s.end) / 2 - wD) / span * 100
             return (
@@ -727,11 +1418,11 @@ function TimeInput({ value, onChange }) {
         style={{
           border: open ? '0.5px solid var(--color-accent)' : 'var(--border)',
           backgroundColor: '#FFFFFF',
-          color: 'var(--color-text)',
+          color: value ? 'var(--color-text)' : 'var(--color-text-muted)',
           minWidth: 88,
         }}
       >
-        <span className="flex-1 text-left">{fmtTime(value)}</span>
+        <span className="flex-1 text-left">{value ? fmtTime(value) : 'Pick time'}</span>
         <svg width="8" height="8" viewBox="0 0 8 8" fill="none" style={{ opacity: 0.35, flexShrink: 0 }}>
           <path d="M1 3L4 6L7 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
@@ -935,29 +1626,42 @@ function ModifierRow({ label, options, value, onChange }) {
   )
 }
 
-function DailyReadiness({ seasonData, onSetupSeason }) {
-  const [planDate, setPlanDate] = useState(new Date().toISOString().slice(0, 10))
+function mergeWhoopData(live) {
+  if (!live) return WHOOP_DATA
+  return {
+    ...WHOOP_DATA,
+    syncedAt:  live.syncedAt ?? WHOOP_DATA.syncedAt,
+    wakeTime:  live.wakeTime ?? WHOOP_DATA.wakeTime,
+    recovery:  live.recovery ?? WHOOP_DATA.recovery,
+    hrv:       { ...WHOOP_DATA.hrv,       value: live.hrv   ?? WHOOP_DATA.hrv.value,       trend: live.hrvTrend   ?? WHOOP_DATA.hrv.trend },
+    sleep:     { ...WHOOP_DATA.sleep,     value: live.sleep  ?? WHOOP_DATA.sleep.value,     trend: live.sleepTrend ?? WHOOP_DATA.sleep.trend },
+    restingHR: { ...WHOOP_DATA.restingHR, value: live.rhr   ?? WHOOP_DATA.restingHR.value,  trend: live.rhrTrend   ?? WHOOP_DATA.restingHR.trend },
+  }
+}
+
+function DailyReadiness({ seasonData, onSetupSeason, blocks, setBlocks, planEvents = [], whoopStatus, whoopLive, onConnectWhoop, onDisconnectWhoop }) {
+  const whoop = mergeWhoopData(whoopLive)
+
+  const [planDate, setPlanDate] = useState(localToday())
   const planDateObj = new Date(planDate + 'T12:00:00')
   const dayName = planDateObj.toLocaleDateString('en-US', { weekday: 'long' })
   const dateStr = planDateObj.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
 
   // Wake is auto-set from Whoop — read-only
-  const wake = WHOOP_DATA.wakeTime
+  const wake = whoop.wakeTime
 
-  const [bed,     setBed]     = useState('21:30')
-  const [blocks,  setBlocks]  = useState([
-    { id: 1, type: 'work',   label: 'Work',   start: '08:00', end: '17:00' },
-    { id: 2, type: 'family', label: 'Family', start: '19:00', end: '20:30' },
-  ])
-  const [addForm,    setAddForm]    = useState({ ...BLOCK_DEFAULTS })
-  const [editingId,  setEditingId]  = useState(null)
-  const [editForm,   setEditForm]   = useState({})
+  const [bed, setBed] = useState(null)
+  const effectiveBed = bed ?? '22:00' // fallback for timeline calculations until user sets bedtime
+  const [addForm,      setAddForm]      = useState({ ...BLOCK_DEFAULTS })
+  const [showAddForm,  setShowAddForm]  = useState(false)
+  const [editingId,    setEditingId]    = useState(null)
+  const [editForm,     setEditForm]     = useState({})
   const [stress,       setStress]       = useState('none')
   const [injury,       setInjury]       = useState('none')
   const [hasCheckedIn, setHasCheckedIn] = useState(false)
 
   // Computed values
-  const windows    = gapsFromBlocks(wake, bed, blocks)
+  const windows    = gapsFromBlocks(wake, effectiveBed, blocks)
   const bestWindow = windows[0] ?? { duration: 0 }
   const availHours = bestWindow.duration
 
@@ -975,31 +1679,32 @@ function DailyReadiness({ seasonData, onSetupSeason }) {
 
   // Training readiness: average of Whoop internal score + external score
   // Only revealed once the user explicitly logs their day
-  const readiness = hasCheckedIn ? Math.round((WHOOP_DATA.recovery + externalScore) / 2) : null
+  const readiness = hasCheckedIn ? Math.round((whoop.recovery + externalScore) / 2) : null
   const c = readiness !== null
     ? readinessColor(readiness)
     : { stroke: 'rgba(255,255,255,0.18)', text: 'rgba(255,255,255,0.18)', bg: 'rgba(255,255,255,0.05)' }
-  const rec = trainingRec(availHours, readiness ?? WHOOP_DATA.recovery)
+  const rec = trainingRec(availHours, readiness ?? whoop.recovery)
 
   const BLOCK_COLOR = { work: '#1B6FD8', school: '#A78BFA', social: '#F5A623', family: '#E86D2E', other: '#94A3B8' }
   const BLOCK_LABEL = { work: 'Work', school: 'School', social: 'Social', family: 'Family', other: 'Other' }
   const TAG_OPTIONS = ['work', 'school', 'social', 'family', 'other']
 
   return (
+    <>
+    <p className="text-base font-bold mb-3" style={{ color: '#0A1628' }}>
+      {dayName}, {dateStr}
+    </p>
     <div className="card overflow-hidden">
 
       {/* ── Dark hero header ── */}
       <div style={{ backgroundColor: '#0A1628' }}>
         <div className="px-5 pt-4 pb-4">
-          <p className="data-value text-sm font-bold mb-3" style={{ color: '#ffffff' }}>
-            {dayName}, {dateStr}
-          </p>
           <div className="flex items-stretch">
 
             {/* ── Left — Training Readiness ring ── */}
             <div className="flex flex-col items-center justify-center pr-6 py-1">
               <p className="text-[9px] uppercase tracking-widest font-semibold mb-3"
-                style={{ color: 'rgba(255,255,255,0.45)' }}>Today's Training Readiness</p>
+                style={{ color: '#ffffff' }}>Today's Training Readiness</p>
               <div className="relative" style={{ width: 148, height: 148 }}>
                 <svg width="148" height="148" style={{ transform: 'rotate(-90deg)' }}>
                   {/* Track */}
@@ -1007,7 +1712,7 @@ function DailyReadiness({ seasonData, onSetupSeason }) {
                   {/* Whoop base arc */}
                   <circle cx="74" cy="74" r="60" fill="none"
                     stroke="rgba(0,200,150,0.25)" strokeWidth="11" strokeLinecap="round"
-                    strokeDasharray={`${2 * Math.PI * 60 * WHOOP_DATA.recovery / 100} ${2 * Math.PI * 60}`}
+                    strokeDasharray={`${2 * Math.PI * 60 * whoop.recovery / 100} ${2 * Math.PI * 60}`}
                     style={{ transition: 'stroke-dashoffset 0.5s ease' }}
                   />
                   {/* Combined readiness arc */}
@@ -1026,29 +1731,16 @@ function DailyReadiness({ seasonData, onSetupSeason }) {
                       {readinessLabel(readiness)}
                     </p>
                   ) : (
-                    <p className="text-[9px] text-center px-4 mt-1 leading-snug" style={{ color: 'rgba(255,255,255,0.30)' }}>
+                    <p className="text-[9px] text-center px-4 mt-1 leading-snug" style={{ color: 'rgba(255,255,255,0.70)' }}>
                       Log load<br />to unlock
                     </p>
                   )}
                 </div>
               </div>
               <div className="flex items-center gap-1.5 mt-3">
-                <span className="data-value text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                  style={{ backgroundColor: 'rgba(0,200,150,0.18)', color: '#00C896' }}>
-                  {WHOOP_DATA.recovery} Whoop
-                </span>
-                <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.20)' }}>+</span>
-                {readiness !== null ? (
-                  <span className="data-value text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                    style={{ backgroundColor: `${extScoreColor.stroke}25`, color: extScoreColor.text }}>
-                    {externalScore} day load
-                  </span>
-                ) : (
-                  <span className="data-value text-[10px] px-2 py-0.5 rounded-full"
-                    style={{ backgroundColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.25)' }}>
-                    ? day load
-                  </span>
-                )}
+                <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.80)' }}>Internal Health</span>
+                <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.50)' }}>+</span>
+                <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.80)' }}>External Load</span>
               </div>
             </div>
 
@@ -1063,23 +1755,48 @@ function DailyReadiness({ seasonData, onSetupSeason }) {
 
                 {/* Internal Health */}
                 <div className="flex flex-col gap-2 flex-1">
-                  <p className="data-value text-[9px] uppercase tracking-widest font-semibold"
-                    style={{ color: 'rgba(255,255,255,0.45)' }}>Internal Health</p>
+                  <div className="flex items-center justify-between">
+                    <p className="data-value text-[9px] uppercase tracking-widest font-semibold"
+                      style={{ color: '#ffffff' }}>Internal Health</p>
+                    {whoopStatus?.connected ? (
+                      <button onClick={onDisconnectWhoop}
+                        className="text-[9px] font-medium px-1.5 py-0.5 rounded"
+                        style={{ color: 'rgba(255,255,255,0.70)', backgroundColor: 'rgba(255,255,255,0.10)' }}>
+                        Whoop ✓
+                      </button>
+                    ) : (
+                      <button onClick={onConnectWhoop}
+                        className="text-[9px] font-semibold px-1.5 py-0.5 rounded"
+                        style={{ color: '#00C896', backgroundColor: 'rgba(0,200,150,0.12)' }}>
+                        Connect Whoop
+                      </button>
+                    )}
+                  </div>
+                  {whoopStatus?.connected && (
+                    <div className="flex items-baseline gap-2">
+                      <span className="data-value text-[9px] uppercase tracking-wider"
+                        style={{ color: '#ffffff' }}>Recovery Score</span>
+                      <span className="data-value text-base font-bold leading-none"
+                        style={(() => { const c = whoopRecoveryColor(whoop.recovery); return { color: c.text } })()}>
+                        {whoop.recovery}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-start gap-5">
                     {[
-                      { label: 'HRV',   val: WHOOP_DATA.hrv.value,      unit: 'ms',  trend: WHOOP_DATA.hrv.trend,      inverted: false },
-                      { label: 'Sleep', val: WHOOP_DATA.sleep.value,     unit: 'h',   trend: WHOOP_DATA.sleep.trend,    inverted: false },
-                      { label: 'RHR',   val: WHOOP_DATA.restingHR.value, unit: 'bpm', trend: WHOOP_DATA.restingHR.trend, inverted: true  },
+                      { label: 'HRV',   val: whoop.hrv.value,      unit: 'ms',  trend: whoop.hrv.trend,      inverted: false },
+                      { label: 'Sleep', val: whoop.sleep.value,     unit: 'h',   trend: whoop.sleep.trend,    inverted: false },
+                      { label: 'RHR',   val: whoop.restingHR.value, unit: 'bpm', trend: whoop.restingHR.trend, inverted: true  },
                     ].map(m => {
                       const isPositive = m.inverted ? m.trend === 'down' : m.trend !== 'down'
-                      const col = m.trend === 'flat' ? 'rgba(255,255,255,0.45)' : isPositive ? '#00C896' : '#E85555'
+                      const col = m.trend === 'flat' ? '#ffffff' : isPositive ? '#00C896' : '#E85555'
                       const arrow = m.trend === 'up' ? '↑' : m.trend === 'down' ? '↓' : '→'
                       return (
                         <div key={m.label}>
                           <p className="data-value text-[9px] uppercase tracking-wider mb-1"
-                            style={{ color: 'rgba(255,255,255,0.30)' }}>{m.label}</p>
+                            style={{ color: '#ffffff' }}>{m.label}</p>
                           <p className="data-value font-bold" style={{ fontSize: 18, lineHeight: 1, color: col }}>
-                            {m.val}<span className="font-normal ml-0.5" style={{ fontSize: 9, color: 'rgba(255,255,255,0.30)' }}>{m.unit}</span>
+                            {m.val}<span className="font-normal ml-0.5" style={{ fontSize: 9, color: 'rgba(255,255,255,0.70)' }}>{m.unit}</span>
                           </p>
                           <p className="data-value text-[10px] mt-0.5" style={{ color: col }}>{arrow}</p>
                         </div>
@@ -1095,7 +1812,7 @@ function DailyReadiness({ seasonData, onSetupSeason }) {
                 <div className="flex flex-col gap-2 flex-1">
                   <div className="flex items-center gap-2">
                     <p className="data-value text-[9px] uppercase tracking-widest font-semibold"
-                      style={{ color: 'rgba(255,255,255,0.45)' }}>External Load</p>
+                      style={{ color: '#ffffff' }}>External Load</p>
                     <span className="w-1.5 h-1.5 rounded-full"
                       style={{ backgroundColor: hasCheckedIn ? '#00C896' : 'rgba(255,255,255,0.18)' }} />
                     <span className="data-value text-[9px]"
@@ -1106,29 +1823,29 @@ function DailyReadiness({ seasonData, onSetupSeason }) {
                   <div className="flex items-start gap-5">
                     <div>
                       <p className="data-value text-[9px] uppercase tracking-wider mb-1"
-                        style={{ color: 'rgba(255,255,255,0.30)' }}>Commitments</p>
+                        style={{ color: '#ffffff' }}>Commitments</p>
                       <p className="data-value font-bold" style={{ fontSize: 18, lineHeight: 1, color: blocks.length > 3 ? '#F5A623' : 'rgba(255,255,255,0.75)' }}>
-                        {blocks.length}<span className="font-normal ml-0.5" style={{ fontSize: 9, color: 'rgba(255,255,255,0.30)' }}>{blocks.length === 1 ? 'blk' : 'blks'}</span>
+                        {blocks.length}<span className="font-normal ml-0.5" style={{ fontSize: 9, color: 'rgba(255,255,255,0.70)' }}>{blocks.length === 1 ? 'blk' : 'blks'}</span>
                       </p>
                     </div>
                     <div>
                       <p className="data-value text-[9px] uppercase tracking-wider mb-1"
-                        style={{ color: 'rgba(255,255,255,0.30)' }}>Free Time</p>
+                        style={{ color: '#ffffff' }}>Free Time</p>
                       <p className="data-value font-bold"
                         style={{ fontSize: 18, lineHeight: 1, color: totalFreeHours >= 4 ? '#00C896' : totalFreeHours >= 2 ? '#F5A623' : '#E85555' }}>
-                        {totalFreeHours.toFixed(1)}<span className="font-normal ml-0.5" style={{ fontSize: 9, color: 'rgba(255,255,255,0.30)' }}>h</span>
+                        {totalFreeHours.toFixed(1)}<span className="font-normal ml-0.5" style={{ fontSize: 9, color: 'rgba(255,255,255,0.70)' }}>h</span>
                       </p>
                     </div>
                     <div>
                       <p className="data-value text-[9px] uppercase tracking-wider mb-1"
-                        style={{ color: 'rgba(255,255,255,0.30)' }}>Modifiers</p>
+                        style={{ color: '#ffffff' }}>Modifiers</p>
                       {modPenalty > 0 ? (
                         <div className="flex flex-col gap-0.5">
                           {stress !== 'none' && <span className="data-value text-[10px] font-semibold capitalize" style={{ color: '#F5A623' }}>{stress} stress</span>}
                           {injury !== 'none' && <span className="data-value text-[10px] font-semibold capitalize" style={{ color: '#F5A623' }}>{injury} injury</span>}
                         </div>
                       ) : (
-                        <p className="data-value text-[10px]" style={{ color: 'rgba(255,255,255,0.25)' }}>None</p>
+                        <p className="data-value text-[10px]" style={{ color: 'rgba(255,255,255,0.70)' }}>None</p>
                       )}
                     </div>
                   </div>
@@ -1142,13 +1859,13 @@ function DailyReadiness({ seasonData, onSetupSeason }) {
               {/* My Day — timeline anchored at bottom */}
               <div className="flex items-center gap-4">
                 <p className="data-value text-[9px] uppercase tracking-widest font-semibold shrink-0"
-                  style={{ color: 'rgba(255,255,255,0.45)' }}>My Day</p>
-                <MiniTimeline wake={wake} bed={bed} blocks={blocks} windows={windows} dark={true} />
+                  style={{ color: '#ffffff' }}>My Day</p>
+                <MiniTimeline wake={wake} bed={effectiveBed} blocks={blocks} windows={windows} dark={true} />
                 <div className="flex items-baseline gap-0.5 shrink-0">
                   <span className="data-value text-2xl font-bold leading-none" style={{ color: extScoreColor.text }}>
                     {externalScore}
                   </span>
-                  <span className="text-[10px] ml-1" style={{ color: 'rgba(255,255,255,0.30)' }}>/ 100</span>
+                  <span className="text-[10px] ml-1" style={{ color: 'rgba(255,255,255,0.70)' }}>/ 100</span>
                 </div>
               </div>
 
@@ -1179,9 +1896,14 @@ function DailyReadiness({ seasonData, onSetupSeason }) {
                 </div>
                 <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>→</span>
                 <TimeInput value={bed} onChange={setBed} />
-                <span className="data-value text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                  {Math.round((toDec(bed) - toDec(wake)) * 10) / 10}h day
-                </span>
+                {bed
+                  ? <span className="data-value text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                      {Math.round((toDec(bed) - toDec(wake)) * 10) / 10}h day
+                    </span>
+                  : <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                      Select your target bedtime
+                    </span>
+                }
               </div>
             </div>
           </div>
@@ -1195,6 +1917,87 @@ function DailyReadiness({ seasonData, onSetupSeason }) {
             </div>
 
             <div className="pl-7 space-y-2">
+
+              {/* Prompt + preset chips */}
+              {(() => {
+                const decToHHMM = dec => {
+                  const h = Math.floor(dec), m = Math.round((dec - h) * 60)
+                  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`
+                }
+                const workBlock  = blocks.find(b => b.type === 'work')
+                const workStart  = workBlock?.start ?? '09:00'
+                const preWorkDec = Math.max(0, toDec(workStart) - 2)
+                const windDownDec = bed ? Math.max(0, toDec(bed) - 2) : null
+
+                const PRESETS = [
+                  {
+                    key: 'work',
+                    label: 'Work',
+                    sub: '9am – 5pm',
+                    block: { type: 'work', label: 'Work', start: '09:00', end: '17:00' },
+                  },
+                  windDownDec != null && {
+                    key: 'winddown',
+                    label: 'Wind Down',
+                    sub: `${toLabel(windDownDec)} – ${toLabel(toDec(bed))}`,
+                    block: { type: 'other', label: 'Wind Down', start: decToHHMM(windDownDec), end: bed },
+                  },
+                  {
+                    key: 'prework',
+                    label: 'Pre-Work',
+                    sub: `${toLabel(preWorkDec)} – ${toLabel(toDec(workStart))}`,
+                    block: { type: 'other', label: 'Pre-Work', start: decToHHMM(preWorkDec), end: workStart },
+                  },
+                ].filter(Boolean)
+
+                const visible = PRESETS.filter(p => !blocks.some(b => b.label === p.block.label))
+                return (
+                  <div className="space-y-2">
+                    <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                      Add scheduled items of your day
+                    </p>
+                    {visible.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {visible.map(p => (
+                          <button
+                            key={p.key}
+                            onClick={() => { setAddForm({ ...p.block }); setShowAddForm(true) }}
+                            className="flex items-center gap-2 px-3 py-1.5 rounded-full text-[11px] font-medium transition-colors hover:opacity-80"
+                            style={{
+                              backgroundColor: BLOCK_COLOR[p.block.type] ? `${BLOCK_COLOR[p.block.type]}18` : 'rgba(15,31,28,0.06)',
+                              border: `0.5px solid ${BLOCK_COLOR[p.block.type] ?? 'rgba(15,31,28,0.15)'}40`,
+                              color: 'var(--color-text)',
+                            }}
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: BLOCK_COLOR[p.block.type] ?? '#94A3B8' }} />
+                            <span>{p.label}</span>
+                            <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>{p.sub}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+
+              {/* Plan events from calendar — rendered as all-day items alongside committed blocks */}
+              {planEvents.map(e => (
+                <div key={e.id}
+                  className="flex items-center gap-2.5 px-3 py-2 rounded-xl"
+                  style={{ border: '0.5px solid rgba(245,158,11,0.28)', backgroundColor: 'rgba(245,158,11,0.06)' }}>
+                  <span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: '#F59E0B' }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="text-xs font-semibold">{e.name}</p>
+                      <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
+                        style={{ backgroundColor: 'rgba(245,158,11,0.15)', color: '#92400E', letterSpacing: '0.02em' }}>
+                        From calendar
+                      </span>
+                    </div>
+                    <p className="data-value text-[10px]" style={{ color: 'var(--color-text-muted)' }}>All day</p>
+                  </div>
+                </div>
+              ))}
 
               {/* Committed items */}
               {blocks.map(b => {
@@ -1210,10 +2013,7 @@ function DailyReadiness({ seasonData, onSetupSeason }) {
                           const active = editForm.type === t
                           return (
                             <button key={t}
-                              onClick={() => setEditForm(f => ({
-                                ...f, type: t,
-                                label: !f.label || Object.values(BLOCK_LABEL).includes(f.label) ? BLOCK_LABEL[t] : f.label,
-                              }))}
+                              onClick={() => setEditForm(f => ({ ...f, type: t }))}
                               className="px-2.5 py-0.5 rounded-full text-[11px] capitalize transition-colors"
                               style={active
                                 ? { backgroundColor: '#0A1628', color: '#ffffff', fontWeight: 600 }
@@ -1281,53 +2081,72 @@ function DailyReadiness({ seasonData, onSetupSeason }) {
                 )
               })}
 
-              {/* Inline add form — feels like the next item in the list */}
-              <div className="rounded-xl px-3 py-2.5 space-y-2"
-                style={{ border: '0.5px dashed rgba(15,31,28,0.18)', backgroundColor: 'rgba(15,31,28,0.02)' }}>
-                <div className="flex flex-wrap gap-1.5">
-                  {TAG_OPTIONS.map(t => {
-                    const active = addForm.type === t
-                    return (
-                      <button key={t}
-                        onClick={() => setAddForm(f => ({
-                          ...f, type: t,
-                          label: !f.label || Object.values(BLOCK_LABEL).includes(f.label) ? BLOCK_LABEL[t] : f.label,
-                        }))}
-                        className="px-2.5 py-0.5 rounded-full text-[11px] capitalize transition-colors"
-                        style={active
-                          ? { backgroundColor: '#0A1628', color: '#ffffff', fontWeight: 600 }
-                          : { backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }
-                        }
-                      >{BLOCK_LABEL[t]}</button>
-                    )
-                  })}
+              {/* Add form — collapsed by default */}
+              {!showAddForm ? (
+                <button
+                  className="px-2.5 py-1 rounded-lg text-[11px] font-semibold"
+                  style={{ backgroundColor: '#0A1628', color: '#fff' }}
+                  onClick={() => { setAddForm({ ...BLOCK_DEFAULTS, type: '' }); setShowAddForm(true) }}
+                >+ Add custom</button>
+              ) : (
+                <div className="rounded-xl px-3 py-2.5 space-y-2"
+                  style={{ border: '0.5px dashed rgba(15,31,28,0.18)', backgroundColor: 'rgba(15,31,28,0.02)' }}>
+                  {/* Name first */}
+                  <input
+                    autoFocus
+                    value={addForm.label}
+                    onChange={e => setAddForm(f => ({ ...f, label: e.target.value }))}
+                    placeholder={`Name (e.g. "${BLOCK_LABEL[addForm.type] ?? 'Work'}")`}
+                    className="w-full text-xs rounded-lg px-2.5 py-1.5 outline-none"
+                    style={{ border: 'var(--border)', backgroundColor: '#FFFFFF', color: 'var(--color-text)' }}
+                  />
+                  {/* Tags below */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[10px] font-medium shrink-0" style={{ color: 'var(--color-text-muted)' }}>Tag:</span>
+                    {TAG_OPTIONS.map(t => {
+                      const active = addForm.type === t
+                      return (
+                        <button key={t}
+                          onClick={() => setAddForm(f => ({ ...f, type: t }))}
+                          className="px-2.5 py-0.5 rounded-full text-[11px] capitalize transition-colors"
+                          style={active
+                            ? { backgroundColor: '#0A1628', color: '#ffffff', fontWeight: 600 }
+                            : { backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }
+                          }
+                        >{BLOCK_LABEL[t]}</button>
+                      )
+                    })}
+                  </div>
+                  {/* Time + actions */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] shrink-0" style={{ color: 'var(--color-text-muted)' }}>Start</span>
+                    <TimeInput value={addForm.start} onChange={v => setAddForm(f => ({ ...f, start: v }))} />
+                    <span className="text-[10px] shrink-0" style={{ color: 'var(--color-text-muted)' }}>End</span>
+                    <TimeInput value={addForm.end} onChange={v => setAddForm(f => ({ ...f, end: v }))} />
+                    <div className="ml-auto flex items-center gap-1.5">
+                      <button
+                        onClick={() => { setAddForm({ ...BLOCK_DEFAULTS, type: '' }); setShowAddForm(false) }}
+                        className="px-2.5 py-1 rounded-lg text-[11px] shrink-0"
+                        style={{ color: 'var(--color-text-muted)', backgroundColor: 'rgba(15,31,28,0.06)' }}
+                      >Cancel</button>
+                      <button
+                        onClick={() => {
+                          setBlocks(prev => [...prev, {
+                            ...addForm,
+                            type: addForm.type || 'other',
+                            label: addForm.label.trim() || BLOCK_LABEL[addForm.type] || 'Block',
+                            id: Date.now(),
+                          }])
+                          setAddForm({ ...BLOCK_DEFAULTS, type: '' })
+                          setShowAddForm(false)
+                        }}
+                        className="px-3 py-1 rounded-lg text-[11px] font-semibold shrink-0 hover:opacity-90 transition-opacity"
+                        style={{ backgroundColor: 'var(--color-accent)', color: '#0A1628' }}
+                      >Add</button>
+                    </div>
+                  </div>
                 </div>
-                <input
-                  value={addForm.label}
-                  onChange={e => setAddForm(f => ({ ...f, label: e.target.value }))}
-                  placeholder={`Name (e.g. "${BLOCK_LABEL[addForm.type]}")`}
-                  className="w-full text-xs rounded-lg px-2.5 py-1.5 outline-none"
-                  style={{ border: 'var(--border)', backgroundColor: '#FFFFFF', color: 'var(--color-text)' }}
-                />
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] shrink-0" style={{ color: 'var(--color-text-muted)' }}>Start</span>
-                  <TimeInput value={addForm.start} onChange={v => setAddForm(f => ({ ...f, start: v }))} />
-                  <span className="text-[10px] shrink-0" style={{ color: 'var(--color-text-muted)' }}>End</span>
-                  <TimeInput value={addForm.end} onChange={v => setAddForm(f => ({ ...f, end: v }))} />
-                  <button
-                    onClick={() => {
-                      setBlocks(prev => [...prev, {
-                        ...addForm,
-                        label: addForm.label.trim() || BLOCK_LABEL[addForm.type],
-                        id: Date.now(),
-                      }])
-                      setAddForm({ ...BLOCK_DEFAULTS })
-                    }}
-                    className="ml-auto px-3 py-1 rounded-lg text-[11px] font-semibold shrink-0 hover:opacity-90 transition-opacity"
-                    style={{ backgroundColor: 'var(--color-accent)', color: '#0A1628' }}
-                  >+ Add</button>
-                </div>
-              </div>
+              )}
 
               {/* Best ride window */}
               {windows.length > 0 && (
@@ -1342,6 +2161,7 @@ function DailyReadiness({ seasonData, onSetupSeason }) {
               )}
 
             </div>
+
           </div>
 
           {/* ── Step 3: Modifiers ── */}
@@ -1433,29 +2253,26 @@ function DailyReadiness({ seasonData, onSetupSeason }) {
         </div>
       </div>
     </div>
+    </>
   )
 }
 
-function AlertCard() {
-  return (
-    <div
-      className="rounded-2xl px-5 py-4 flex items-start gap-3"
-      style={{ backgroundColor: 'rgba(245,166,35,0.07)', border: '0.5px solid rgba(245,166,35,0.25)' }}
-    >
-      <span className="text-base mt-0.5 shrink-0">⚡</span>
-      <p className="text-sm" style={{ color: 'var(--color-text)' }}>
-        <span className="font-medium">Wednesday was auto-adjusted</span>
-        <span style={{ color: 'var(--color-text-muted)' }}> due to Tuesday's team dinner — recovery session shortened to 45 min and capped at Z1.</span>
-      </p>
-    </div>
-  )
-}
 
-function OverviewTab({ seasonData, onSetupSeason }) {
+
+function OverviewTab({ seasonData, onSetupSeason, todayBlocks, setTodayBlocks, planEvents = [], whoopStatus, whoopLive, onConnectWhoop, onDisconnectWhoop }) {
   return (
     <div className="space-y-4">
-      <DailyReadiness seasonData={seasonData} onSetupSeason={onSetupSeason} />
-      <AlertCard />
+      <DailyReadiness
+        seasonData={seasonData}
+        onSetupSeason={onSetupSeason}
+        blocks={todayBlocks}
+        setBlocks={setTodayBlocks}
+        planEvents={planEvents}
+        whoopStatus={whoopStatus}
+        whoopLive={whoopLive}
+        onConnectWhoop={onConnectWhoop}
+        onDisconnectWhoop={onDisconnectWhoop}
+      />
     </div>
   )
 }

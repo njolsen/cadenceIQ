@@ -12,14 +12,17 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "concurrently": "^10.0.3",
+    "concurrently": "^7.6.0",
     "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "fit-file-parser": "^3.0.2",
     "garmin-connect": "^1.6.2",
+    "node-fetch": "^2.7.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^7.16.0"
+    "react-router-dom": "^7.16.0",
+    "recharts": "^3.9.2"
   },
   "devDependencies": {
     "@types/react": "^18.2.15",

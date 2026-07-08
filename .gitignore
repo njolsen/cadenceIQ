@@ -1,3 +1,12 @@
+# Environment variables — never commit secrets
+.env
+.env.local
+.env.*.local
+
+# OAuth / session caches — contain live tokens, never commit
+.whoop-session.json
+.garmin-session.json
+
 # Logs
 logs
 *.log

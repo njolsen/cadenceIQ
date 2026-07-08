@@ -1,89 +1,262 @@
 'use strict'
 
-const express = require('express')
-const cors = require('cors')
-const { getZwiftActivities } = require('./zwift.cjs')
-const { connectGarmin, getGarminStatus, disconnectGarmin, getGarminActivities } = require('./garmin.cjs')
+require('dotenv').config()
 
-const app = express()
+const express   = require('express')
+const cors      = require('cors')
+const fetch     = require('node-fetch')
+const { getZwiftActivities }                                                        = require('./zwift.cjs')
+const { connectGarmin, getGarminStatus, disconnectGarmin, getGarminActivities }    = require('./garmin.cjs')
+const { getAuthUrl, connectWhoop, getWhoopStatus, disconnectWhoop,
+        getLatestRecovery, getLatestSleep, getWhoopActivities,
+        getWhoopHistory }                                                            = require('./whoop.cjs')
+
+const app  = express()
 const PORT = 3001
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:5173'
 
-app.use(cors({ origin: 'http://localhost:5173' }))
+app.use(cors({ origin: FRONTEND_ORIGIN }))
 app.use(express.json())
 
-// Merge and index activities by date
+// ─── Merge helpers ─────────────────────────────────────────────────────────────
+
 function indexByDate(activities) {
   const byDate = {}
   for (const act of activities) {
     if (!act.date) continue
     ;(byDate[act.date] ??= []).push(act)
   }
-  // Sort each day: longest activity first
   for (const date of Object.keys(byDate)) {
     byDate[date].sort((a, b) => b.moving_time_s - a.moving_time_s)
   }
   return byDate
 }
 
-// GET /api/activities?start=YYYY-MM-DD&end=YYYY-MM-DD&ftp=260
+// ─── Activities (Zwift + Garmin + Whoop) ──────────────────────────────────────
+// Parsing 500+ FIT files is slow on a cold start. We deduplicate concurrent
+// requests so only one parse runs at a time, and cache the result for 5 min.
+
+const ACTIVITY_CACHE_TTL = 30 * 60 * 1000
+let activityCache = null   // { data, ts }
+let activityInFlight = null  // shared Promise while a parse is running
+
+async function buildActivities(start, end, ftp) {
+  const [zwiftResult, garminResult, whoopResult] = await Promise.all([
+    getZwiftActivities(start, end, ftp),
+    getGarminActivities(start, end, ftp),
+    getWhoopActivities(start ?? '2020-01-01', end ?? new Date().toISOString().substring(0, 10), ftp),
+  ])
+  const all = [...zwiftResult.activities, ...garminResult.activities, ...whoopResult.activities]
+  return {
+    byDate: indexByDate(all),
+    meta: {
+      zwift:  { count: zwiftResult.activities.length, dir: zwiftResult.dir, error: zwiftResult.error },
+      garmin: { connected: garminResult.connected, count: garminResult.activities.length },
+      whoop:  { connected: whoopResult.connected,  count: whoopResult.activities.length },
+      ftp,
+    },
+  }
+}
+
 app.get('/api/activities', async (req, res) => {
   const { start, end, ftp: ftpStr } = req.query
   const ftp = parseInt(ftpStr || '260', 10)
 
+  if (activityCache && Date.now() - activityCache.ts < ACTIVITY_CACHE_TTL) {
+    return res.json(activityCache.data)
+  }
+
+  if (!activityInFlight) {
+    activityInFlight = buildActivities(start, end, ftp)
+      .then(data => { activityCache = { data, ts: Date.now() }; return data })
+      .finally(() => { activityInFlight = null })
+  }
+
   try {
-    const [zwiftResult, garminResult] = await Promise.all([
-      getZwiftActivities(start, end, ftp),
-      getGarminActivities(start, end, ftp),
-    ])
-
-    const all = [...zwiftResult.activities, ...garminResult.activities]
-    const byDate = indexByDate(all)
-
-    res.json({
-      byDate,
-      meta: {
-        zwift: { count: zwiftResult.activities.length, dir: zwiftResult.dir, error: zwiftResult.error },
-        garmin: { connected: garminResult.connected, count: garminResult.activities.length },
-        ftp,
-      },
-    })
+    res.json(await activityInFlight)
   } catch (err) {
     console.error('/api/activities error:', err.message)
     res.status(500).json({ error: err.message })
   }
 })
 
-// POST /api/garmin/connect { username, password }
+// ─── Garmin ────────────────────────────────────────────────────────────────────
+
 app.post('/api/garmin/connect', async (req, res) => {
   const { username, password } = req.body || {}
   if (!username || !password) {
     return res.status(400).json({ error: 'username and password required' })
   }
   try {
-    const result = await connectGarmin(username, password)
-    res.json(result)
+    res.json(await connectGarmin(username, password))
   } catch (err) {
     console.error('/api/garmin/connect error:', err.message)
     res.status(401).json({ error: err.message || 'Login failed' })
   }
 })
 
-// GET /api/garmin/status
 app.get('/api/garmin/status', async (_req, res) => {
-  try {
-    const status = await getGarminStatus()
-    res.json(status)
-  } catch (err) {
-    res.status(500).json({ error: err.message })
-  }
+  try { res.json(await getGarminStatus()) }
+  catch (err) { res.status(500).json({ error: err.message }) }
 })
 
-// POST /api/garmin/disconnect
 app.post('/api/garmin/disconnect', (_req, res) => {
   disconnectGarmin()
   res.json({ success: true })
 })
 
+// ─── Whoop OAuth ───────────────────────────────────────────────────────────────
+
+// Step 1 — redirect user to Whoop's authorization page
+app.get('/auth/whoop/login', (_req, res) => {
+  try {
+    res.redirect(getAuthUrl())
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Step 2 — Whoop redirects back here with ?code=...
+app.get('/auth/whoop/callback', async (req, res) => {
+  const { code, error } = req.query
+  console.log('[Whoop callback] hit — code:', code ? code.substring(0, 8) + '...' : 'none', 'error:', error || 'none')
+  if (error || !code) {
+    return res.redirect(`${FRONTEND_ORIGIN}/athlete?whoop_error=${encodeURIComponent(error || 'no_code')}`)
+  }
+  try {
+    await connectWhoop(code)
+    console.log('[Whoop callback] session stored OK —', JSON.stringify(getWhoopStatus()))
+    res.redirect(`${FRONTEND_ORIGIN}/athlete?whoop=connected`)
+  } catch (err) {
+    console.error('/auth/whoop/callback error:', err.message)
+    res.redirect(`${FRONTEND_ORIGIN}/athlete?whoop_error=${encodeURIComponent(err.message)}`)
+  }
+})
+
+// ─── Whoop data ────────────────────────────────────────────────────────────────
+
+app.get('/api/whoop/status', (_req, res) => {
+  res.json(getWhoopStatus())
+})
+
+app.get('/api/whoop/recovery', async (_req, res) => {
+  try {
+    const [recovery, sleep] = await Promise.all([getLatestRecovery(), getLatestSleep()])
+    res.json({ ...recovery, ...sleep })
+  } catch (err) {
+    console.error('/api/whoop/recovery error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.post('/api/whoop/disconnect', (_req, res) => {
+  disconnectWhoop()
+  res.json({ success: true })
+})
+
+app.get('/api/whoop/history', async (req, res) => {
+  const days = parseInt(req.query.days || '180', 10)
+  try {
+    res.json(await getWhoopHistory(days))
+  } catch (err) {
+    console.error('/api/whoop/history error:', err.message)
+    res.json({ recovery: [], sleep: [] })
+  }
+})
+
+// ─── BikeReg ───────────────────────────────────────────────────────────────────
+
+const BIKEREG_CACHE     = new Map()
+const BIKEREG_CACHE_TTL = 30 * 60 * 1000
+
+const CYCLING_TYPES = new Set([
+  'Road Race', 'Criterium', 'Time Trial', 'Gran Fondo',
+  'Mountain Bike', 'Cyclocross', 'Track', 'Gravel',
+])
+
+// Priority order: more specific types win over generic Road Race
+const TYPE_PRIORITY = [
+  'Criterium', 'Time Trial', 'Cyclocross', 'Gran Fondo',
+  'Gravel', 'Mountain Bike', 'Track', 'Road Race',
+]
+
+function parseNetDate(d) {
+  const m = (d ?? '').match(/\/Date\((\d+)/)
+  return m ? new Date(parseInt(m[1])).toISOString().substring(0, 10) : null
+}
+
+function mapEventType(types) {
+  if (!types?.length) return 'Other'
+  for (const t of TYPE_PRIORITY) {
+    if (types.includes(t)) return t
+  }
+  return CYCLING_TYPES.has(types[0]) ? types[0] : 'Other'
+}
+
+function seriesDates(e) {
+  const startStr = parseNetDate(e.EventDate)
+  const endStr   = parseNetDate(e.EventEndDate)
+  if (!endStr || startStr === endStr) return null   // single-day event
+
+  // Collect unique race dates from all category slots
+  const dateSet = new Set()
+  for (const cat of e.Categories ?? []) {
+    for (const d of cat.CategoryDates ?? []) {
+      const p = parseNetDate(d)
+      if (p) dateSet.add(p)
+    }
+  }
+  const dates = Array.from(dateSet).sort()
+  return dates.length > 1 ? dates : null  // only expand if we got real individual dates
+}
+
+app.get('/api/bikereg/search', async (req, res) => {
+  const region = (req.query.region || 'Northeast').trim()
+  const cached = BIKEREG_CACHE.get(region)
+  if (cached && Date.now() - cached.ts < BIKEREG_CACHE_TTL) {
+    return res.json(cached.data)
+  }
+  try {
+    const url  = `https://www.bikereg.com/api/search?region=${encodeURIComponent(region)}&format=json`
+    const resp = await fetch(url)
+    if (!resp.ok) throw new Error(`BikeReg returned ${resp.status}`)
+    const raw  = await resp.json()
+
+    const events = []
+    for (const e of raw.MatchingEvents ?? []) {
+      if (!e.EventTypes?.some(t => CYCLING_TYPES.has(t))) continue
+      const base = {
+        name:      e.EventName,
+        location:  [e.EventCity, e.EventState].filter(Boolean).join(', '),
+        eventType: mapEventType(e.EventTypes),
+        url:       e.EventUrl || (e.EventPermalink ? `https://www.bikereg.com${e.EventPermalink}` : null),
+        status:    'open',
+      }
+      const dates = seriesDates(e)
+      if (dates) {
+        dates.forEach((date, i) => events.push({ ...base, id: `${e.EventId}-${i}`, date, isSeries: true, seriesTotal: dates.length }))
+      } else {
+        const date = parseNetDate(e.EventDate)
+        if (date) events.push({ ...base, id: String(e.EventId), date })
+      }
+    }
+
+    events.sort((a, b) => a.date.localeCompare(b.date))
+    const result = { events, region }
+    BIKEREG_CACHE.set(region, { data: result, ts: Date.now() })
+    res.json(result)
+  } catch (err) {
+    console.error('/api/bikereg/search error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ─── Start ─────────────────────────────────────────────────────────────────────
+
 app.listen(PORT, () => {
-  console.log(`CadenceIQ API running on http://localhost:${PORT}`)
+  console.log(`CadenceIQ API  →  http://localhost:${PORT}`)
+  if (!process.env.WHOOP_CLIENT_ID) {
+    console.warn('  ⚠  WHOOP_CLIENT_ID not set — Whoop OAuth will not work')
+    console.warn('     Copy .env.example → .env and fill in your credentials')
+  }
 })
