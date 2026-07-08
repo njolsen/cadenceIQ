@@ -454,20 +454,22 @@ export function SeasonArc({ seasonData, onEditDates, onSetupSeason, onRaceClick 
           <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, backgroundColor: '#FF2D78' }} />
           {/* Race dot markers */}
           {(seasonData.races ?? []).map((r, i) => {
-            const rp = racePct(r.date)
-            const isA = r.priority === 'A Race'
+            const rp   = racePct(r.date)
+            const isA  = r.priority === 'A Race'
+            const past = r.date <= localToday()
+            const size = isA ? '10px' : '7px'
             return (
               <span
                 key={r.id ?? i}
                 title={`${r.name} · ${r.date}`}
                 style={{
                   position: 'absolute', top: '50%', transform: 'translateY(-50%)',
-                  left: `${rp}%`, marginLeft: '-4px',
-                  width: isA ? '10px' : '7px',
-                  height: isA ? '10px' : '7px',
+                  left: `${rp}%`, marginLeft: past ? '-5px' : '-4px',
+                  width: past ? size : (isA ? '10px' : '7px'),
+                  height: past ? size : (isA ? '10px' : '7px'),
                   borderRadius: '50%',
-                  backgroundColor: isA ? '#FF2D78' : 'rgba(15,31,28,0.35)',
-                  border: '2px solid white',
+                  backgroundColor: past ? '#FF2D78' : 'rgba(15,31,28,0.22)',
+                  border: `2px solid white`,
                   display: 'inline-block',
                   zIndex: 1,
                 }}
@@ -515,7 +517,7 @@ export function SeasonArc({ seasonData, onEditDates, onSetupSeason, onRaceClick 
           className="text-[11px] px-2.5 py-1 rounded-full font-medium transition-colors shrink-0"
           style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text-muted)', border: 'var(--border)' }}
         >
-          Races
+          View My Season
         </button>
       </div>
     </div>

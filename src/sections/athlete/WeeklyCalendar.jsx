@@ -599,6 +599,7 @@ export default function WeeklyCalendar({
           copiedItem={copiedItem}
           onCopyItem={item => setCopiedItem(item)}
           onPasteItem={() => { if (copiedItem) { const { id, ...rest } = copiedItem; handleSaveWorkout(dayModal.date, rest) } }}
+          seasonRaces={seasonData?.races ?? []}
         />
       )}
 
@@ -1030,7 +1031,7 @@ function MonthView({ dividerRefs, todayRowRef, allEvents, seasonData, onDaySelec
 const ITEM_TYPE_COLOR = { bike: '#00C896', gym: '#A78BFA', event: '#FF2D78', plan: '#F59E0B' }
 const ITEM_TYPE_ICON  = { bike: '🚴', gym: '🏋️', event: '🏁', plan: '📅' }
 
-function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWorkouts = [], onRemoveWorkout, onUpdateWorkout, plannedSession = null, sessionOverride = null, onUpdateSession, addMode = true, selectedItemId = null, copiedItem = null, onCopyItem, onPasteItem }) {
+function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWorkouts = [], onRemoveWorkout, onUpdateWorkout, plannedSession = null, sessionOverride = null, onUpdateSession, addMode = true, selectedItemId = null, copiedItem = null, onCopyItem, onPasteItem, seasonRaces = [] }) {
   const [editingId, setEditingId] = useState(null)
   const [editDraft, setEditDraft] = useState(null)
   const [editBikeItem, setEditBikeItem] = useState(null)
@@ -1408,7 +1409,7 @@ function DayAddModal({ date, mode, onSetMode, onSave, onClose, athleteFtp, dayWo
         {/* Event form */}
         {mode === 'event' && (
           <div className="p-5">
-            <EventForm onSave={onSave} onCancel={() => onSetMode('pick')} />
+            <EventForm onSave={onSave} onCancel={() => onSetMode('pick')} seasonRaces={seasonRaces} />
           </div>
         )}
 
@@ -1921,6 +1922,26 @@ function PlanForm({ onSave, onCancel }) {
 
 // ─── EventForm ────────────────────────────────────────────────────────────────
 
+const CAL_BIKEREG_EVENTS = [
+  { id: 'br001', name: 'Battenkill Road Race',             date: '2026-04-11', location: 'Cambridge, NY',        eventType: 'Road Race',  distance: '62 mi',       fee: '$70',  status: 'open'     },
+  { id: 'br002', name: 'Gran Fondo New York',              date: '2026-05-17', location: 'Fort Lee, NJ',         eventType: 'Gran Fondo', distance: '100 mi',      fee: '$150', status: 'open'     },
+  { id: 'br003', name: 'Somerville Criterium',             date: '2026-05-25', location: 'Somerville, NJ',       eventType: 'Crit',       distance: '50 min + 5',  fee: '$40',  status: 'open'     },
+  { id: 'br004', name: 'Air Force Cycling Classic',        date: '2026-05-30', location: 'Arlington, VA',        eventType: 'Crit',       distance: '40 min + 5',  fee: '$35',  status: 'waitlist' },
+  { id: 'br005', name: 'Philly Bike Race',                 date: '2026-06-07', location: 'Philadelphia, PA',     eventType: 'Crit',       distance: '60 min + 5',  fee: '$45',  status: 'open'     },
+  { id: 'br006', name: 'Tour de Cure New York',            date: '2026-06-13', location: 'Saratoga Springs, NY', eventType: 'Gran Fondo', distance: '100 mi',      fee: '$55',  status: 'open'     },
+  { id: 'br007', name: 'Intelligentsia Cup',               date: '2026-07-10', location: 'Chicago, IL',          eventType: 'Crit',       distance: '8 days',      fee: '$85',  status: 'open'     },
+  { id: 'br008', name: 'Cascade Cycling Classic',          date: '2026-07-17', location: 'Bend, OR',             eventType: 'Road Race',  distance: '5-day stage', fee: '$140', status: 'open'     },
+  { id: 'br009', name: 'Louisville Criterium',             date: '2026-07-25', location: 'Louisville, KY',       eventType: 'Crit',       distance: '50 min + 5',  fee: '$38',  status: 'open'     },
+  { id: 'br010', name: 'Tour of the Catskills',            date: '2026-08-14', location: 'Arkville, NY',         eventType: 'Road Race',  distance: '85 mi',       fee: '$65',  status: 'open'     },
+  { id: 'br011', name: 'Mt. Washington Hillclimb',         date: '2026-08-22', location: 'Gorham, NH',           eventType: 'Time Trial', distance: '7.6 mi',      fee: '$80',  status: 'waitlist' },
+  { id: 'br012', name: 'Green Mountain Stage Race',        date: '2026-08-27', location: 'Burlington, VT',       eventType: 'Road Race',  distance: '4-day stage', fee: '$130', status: 'open'     },
+  { id: 'br013', name: 'Tour of Somerville',               date: '2026-09-12', location: 'Somerville, NJ',       eventType: 'Road Race',  distance: '62 mi',       fee: '$60',  status: 'open'     },
+  { id: 'br014', name: 'USA Cycling Masters TT Nationals', date: '2026-09-19', location: 'Winston-Salem, NC',    eventType: 'Time Trial', distance: '20 km',       fee: '$55',  status: 'open'     },
+  { id: 'br015', name: 'Gateway Cup',                      date: '2026-09-04', location: 'St. Louis, MO',        eventType: 'Crit',       distance: '4 days',      fee: '$80',  status: 'open'     },
+  { id: 'br016', name: 'Hincapie Gran Fondo',              date: '2026-10-03', location: 'Greenville, SC',       eventType: 'Gran Fondo', distance: '80 mi',       fee: '$95',  status: 'open'     },
+  { id: 'br017', name: 'Joe Martin Stage Race',            date: '2026-04-23', location: 'Fayetteville, AR',     eventType: 'Road Race',  distance: '4-day stage', fee: '$120', status: 'open'     },
+]
+
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA',
   'HI','ID','IL','IN','IA','KS','KY','LA','ME','MD',
@@ -1930,81 +1951,174 @@ const US_STATES = [
   'DC',
 ]
 
-function EventForm({ onSave, onCancel }) {
+function EventForm({ onSave, onCancel, seasonRaces = [] }) {
+  const [tab,       setTab]       = useState('manual')  // 'manual' | 'bikereg'
   const [name,      setName]      = useState('')
   const [city,      setCity]      = useState('')
   const [stateCode, setStateCode] = useState('')
   const [eventType, setEventType] = useState('Road Race')
   const [priority,  setPriority]  = useState('B Race')
-  const EVENT_TYPES = ['Crit', 'Road Race', 'Time Trial', 'Other']
+  const [brSearch,  setBrSearch]  = useState('')
+  const EVENT_TYPES = ['Crit', 'Road Race', 'Time Trial', 'Gran Fondo', 'Other']
   const PRIORITIES  = ['A Race', 'B Race', 'C Race']
   const canSubmit = name.trim().length > 0
   const location  = [city.trim(), stateCode].filter(Boolean).join(', ')
+
+  const addedNames = new Set(seasonRaces.map(r => r.name.toLowerCase()))
+  const q = brSearch.trim().toLowerCase()
+  const brResults = CAL_BIKEREG_EVENTS
+    .filter(e => e.status !== 'closed' && (!q || e.name.toLowerCase().includes(q) || e.location.toLowerCase().includes(q)))
+    .sort((a, b) => a.date.localeCompare(b.date))
+
+  function fillFromBikeReg(e) {
+    const [loc, st] = e.location.split(', ')
+    setName(e.name)
+    setCity(loc ?? '')
+    setStateCode(st ?? '')
+    setEventType(e.eventType === 'Gran Fondo' ? 'Other' : e.eventType)
+    setTab('manual')
+  }
+
   return (
-    <div className="space-y-4">
-      <p className="section-title">New Event</p>
-      <input
-        className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-        style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }}
-        placeholder="Event name (e.g. Tour of Somerville)"
-        value={name} onChange={e => setName(e.target.value)}
-      />
-      <div className="flex gap-2">
-        <input
-          className="flex-1 rounded-xl px-3 py-2.5 text-sm outline-none"
-          style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }}
-          placeholder="City"
-          value={city} onChange={e => setCity(e.target.value)}
-        />
-        <select
-          value={stateCode} onChange={e => setStateCode(e.target.value)}
-          className="rounded-xl px-3 py-2.5 text-sm outline-none"
-          style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)', color: stateCode ? '#1A2421' : '#637068', width: 80 }}>
-          <option value="">State</option>
-          {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
+    <div className="space-y-3">
+      {/* Tabs */}
+      <div className="flex gap-0 -mx-1" style={{ borderBottom: 'var(--border)' }}>
+        {[
+          { key: 'manual', label: 'Manual' },
+          { key: 'bikereg', label: 'Find on BikeReg', badge: 'BR' },
+        ].map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium relative"
+            style={{
+              color: tab === t.key ? 'var(--color-text)' : 'var(--color-text-muted)',
+              borderBottom: tab === t.key ? '2px solid #0A1628' : '2px solid transparent',
+              marginBottom: '-1px',
+            }}>
+            {t.label}
+            {t.badge && (
+              <span className="text-[8px] font-bold px-1 py-px rounded"
+                style={{ backgroundColor: '#FF6B00', color: '#fff' }}>{t.badge}</span>
+            )}
+          </button>
+        ))}
       </div>
-      <div>
-        <p className="text-xs font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>Event Type</p>
-        <div className="flex gap-2 flex-wrap">
-          {EVENT_TYPES.map(t => (
-            <button key={t} onClick={() => setEventType(t)}
-              className="px-3 py-1.5 rounded-full text-xs font-medium transition-all"
-              style={{
-                backgroundColor: eventType === t ? '#0A1628' : 'rgba(15,31,28,0.05)',
-                color: eventType === t ? '#fff' : 'var(--color-text)',
-              }}>
-              {t}
-            </button>
-          ))}
+
+      {/* BikeReg search panel */}
+      {tab === 'bikereg' && (
+        <div className="space-y-2">
+          <input
+            className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+            style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }}
+            placeholder="Search events or locations…"
+            value={brSearch} onChange={e => setBrSearch(e.target.value)}
+            autoFocus
+          />
+          <div className="space-y-1.5 max-h-60 overflow-y-auto pr-0.5">
+            {brResults.length === 0 && (
+              <p className="text-xs text-center py-4" style={{ color: 'var(--color-text-muted)' }}>No events found.</p>
+            )}
+            {brResults.map(e => {
+              const isAdded = addedNames.has(e.name.toLowerCase())
+              const d = new Date(e.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+              const statusColor = e.status === 'waitlist' ? '#F5A623' : '#00C896'
+              return (
+                <div key={e.id}
+                  className="rounded-xl px-3 py-2.5 flex items-start justify-between gap-2"
+                  style={{ border: 'var(--border)', backgroundColor: '#FFFFFF' }}>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-xs leading-tight truncate">{e.name}</p>
+                    <p className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                      {d} · {e.eventType} · <span style={{ color: statusColor }}>{e.status === 'waitlist' ? 'Waitlist' : 'Open'}</span>
+                    </p>
+                    <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>📍 {e.location}</p>
+                  </div>
+                  {isAdded ? (
+                    <span className="shrink-0 text-[10px] font-semibold px-2 py-1 rounded-full"
+                      style={{ backgroundColor: 'rgba(0,200,150,0.1)', color: '#00C896' }}>✓ In season</span>
+                  ) : (
+                    <button onClick={ev => { ev.stopPropagation(); fillFromBikeReg(e) }}
+                      className="shrink-0 text-[10px] font-semibold px-2.5 py-1 rounded-full"
+                      style={{ backgroundColor: '#0A1628', color: '#fff' }}>Select</button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button onClick={onCancel}
+              className="flex-1 py-2.5 rounded-full text-sm font-medium"
+              style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text-muted)' }}>Cancel</button>
+          </div>
         </div>
-      </div>
-      <div>
-        <p className="text-xs font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>Race Priority</p>
-        <div className="flex gap-2">
-          {PRIORITIES.map(p => (
-            <button key={p} onClick={() => setPriority(p)}
-              className="flex-1 py-2 rounded-full text-xs font-semibold transition-all"
-              style={{
-                backgroundColor: priority === p ? '#FF2D78' : 'rgba(15,31,28,0.05)',
-                color: priority === p ? '#fff' : 'var(--color-text)',
-              }}>
-              {p}
+      )}
+
+      {/* Manual entry form */}
+      {tab === 'manual' && (
+        <div className="space-y-3">
+          <input
+            className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+            style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }}
+            placeholder="Event name (e.g. Tour of Somerville)"
+            value={name} onChange={e => setName(e.target.value)}
+          />
+          <div className="flex gap-2">
+            <input
+              className="flex-1 rounded-xl px-3 py-2.5 text-sm outline-none"
+              style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }}
+              placeholder="City"
+              value={city} onChange={e => setCity(e.target.value)}
+            />
+            <select
+              value={stateCode} onChange={e => setStateCode(e.target.value)}
+              className="rounded-xl px-3 py-2.5 text-sm outline-none"
+              style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)', color: stateCode ? '#1A2421' : '#637068', width: 80 }}>
+              <option value="">State</option>
+              {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <p className="text-xs font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>Event Type</p>
+            <div className="flex gap-2 flex-wrap">
+              {EVENT_TYPES.map(t => (
+                <button key={t} onClick={() => setEventType(t)}
+                  className="px-3 py-1.5 rounded-full text-xs font-medium transition-all"
+                  style={{
+                    backgroundColor: eventType === t ? '#0A1628' : 'rgba(15,31,28,0.05)',
+                    color: eventType === t ? '#fff' : 'var(--color-text)',
+                  }}>
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>Race Priority</p>
+            <div className="flex gap-2">
+              {PRIORITIES.map(p => (
+                <button key={p} onClick={() => setPriority(p)}
+                  className="flex-1 py-2 rounded-full text-xs font-semibold transition-all"
+                  style={{
+                    backgroundColor: priority === p ? '#FF2D78' : 'rgba(15,31,28,0.05)',
+                    color: priority === p ? '#fff' : 'var(--color-text)',
+                  }}>
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button onClick={onCancel}
+              className="flex-1 py-2.5 rounded-full text-sm font-medium"
+              style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text-muted)' }}>Cancel</button>
+            <button
+              onClick={() => { if (canSubmit) onSave({ type: 'event', name: name.trim(), location, eventType, priority }) }}
+              className="flex-1 py-2.5 rounded-full text-sm font-semibold"
+              style={{ backgroundColor: '#FF2D78', color: '#fff', opacity: canSubmit ? 1 : 0.45 }}>
+              Add event
             </button>
-          ))}
+          </div>
         </div>
-      </div>
-      <div className="flex gap-2 pt-1">
-        <button onClick={onCancel}
-          className="flex-1 py-2.5 rounded-full text-sm font-medium"
-          style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text-muted)' }}>Cancel</button>
-        <button
-          onClick={() => { if (canSubmit) onSave({ type: 'event', name: name.trim(), location, eventType, priority }) }}
-          className="flex-1 py-2.5 rounded-full text-sm font-semibold"
-          style={{ backgroundColor: '#FF2D78', color: '#fff', opacity: canSubmit ? 1 : 0.45 }}>
-          Add event
-        </button>
-      </div>
+      )}
     </div>
   )
 }
