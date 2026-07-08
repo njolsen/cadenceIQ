@@ -440,55 +440,70 @@ export function SeasonArc({ seasonData, onEditDates, onSetupSeason, onRaceClick 
 
   const next = upcoming[0] ?? null
 
+  function fmtBarDate(dateStr) {
+    return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  }
+
   return (
     <div className="flex items-center gap-3">
       <span className="section-title whitespace-nowrap">Season</span>
-      <div className="flex-1 relative h-1.5 rounded-full" style={{ backgroundColor: 'rgba(15,31,28,0.08)' }}>
-        <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, backgroundColor: '#FF2D78' }} />
-        {/* Event/race dot markers */}
-        {(seasonData.races ?? []).map((r, i) => {
-          const rp = racePct(r.date)
-          const isA = r.priority === 'A race'
-          return (
-            <span
-              key={r.id ?? i}
-              title={`${r.name} · ${r.date}`}
-              style={{
-                position: 'absolute', top: '50%', transform: 'translateY(-50%)',
-                left: `${rp}%`, marginLeft: '-4px',
-                width: isA ? '10px' : '7px',
-                height: isA ? '10px' : '7px',
-                borderRadius: '50%',
-                backgroundColor: isA ? '#FF2D78' : 'rgba(15,31,28,0.35)',
-                border: '2px solid white',
-                display: 'inline-block',
-                zIndex: 1,
-              }}
-            />
-          )
-        })}
-        {/* Today marker */}
-        <span
-          className="absolute top-1/2 -translate-y-1/2"
-          style={{
-            left: `${pct}%`, marginLeft: '-4px',
-            width: '8px', height: '8px', borderRadius: '50%',
-            backgroundColor: '#FF2D78', border: '2px solid white',
-            display: 'inline-block', zIndex: 2,
-          }}
-        />
+
+      {/* Timeline bar + date labels */}
+      <div className="flex-1 min-w-0">
+        <div className="relative h-1.5 rounded-full" style={{ backgroundColor: 'rgba(15,31,28,0.08)' }}>
+          <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, backgroundColor: '#FF2D78' }} />
+          {/* Race dot markers */}
+          {(seasonData.races ?? []).map((r, i) => {
+            const rp = racePct(r.date)
+            const isA = r.priority === 'A Race'
+            return (
+              <span
+                key={r.id ?? i}
+                title={`${r.name} · ${r.date}`}
+                style={{
+                  position: 'absolute', top: '50%', transform: 'translateY(-50%)',
+                  left: `${rp}%`, marginLeft: '-4px',
+                  width: isA ? '10px' : '7px',
+                  height: isA ? '10px' : '7px',
+                  borderRadius: '50%',
+                  backgroundColor: isA ? '#FF2D78' : 'rgba(15,31,28,0.35)',
+                  border: '2px solid white',
+                  display: 'inline-block',
+                  zIndex: 1,
+                }}
+              />
+            )
+          })}
+          {/* Today marker */}
+          <span
+            className="absolute top-1/2 -translate-y-1/2"
+            style={{
+              left: `${pct}%`, marginLeft: '-4px',
+              width: '8px', height: '8px', borderRadius: '50%',
+              backgroundColor: '#FF2D78', border: '2px solid white',
+              display: 'inline-block', zIndex: 2,
+            }}
+          />
+        </div>
+        {/* Start / end date labels */}
+        <div className="flex justify-between mt-0.5">
+          <span className="data-value text-[9px]" style={{ color: 'var(--color-text-muted)' }}>
+            {fmtBarDate(seasonData.season.start)}
+          </span>
+          <span className="data-value text-[9px]" style={{ color: 'var(--color-text-muted)' }}>
+            {fmtBarDate(seasonData.season.end)}
+          </span>
+        </div>
       </div>
-      <div className="flex items-center gap-3 shrink-0">
+
+      <div className="flex items-center gap-2 shrink-0">
         {next && (
           <div className="flex items-center gap-1.5">
-            <span
-              className="data-value text-xs font-semibold"
-              style={{ color: '#FF2D78' }}
-            >
+            <span className="data-value text-xs font-semibold truncate max-w-[90px]" style={{ color: '#FF2D78' }}>
               {next.name}
             </span>
             <span
-              className="data-value text-[11px] px-1.5 py-0.5 rounded-full font-medium"
+              className="data-value text-[11px] px-1.5 py-0.5 rounded-full font-medium shrink-0"
               style={{ backgroundColor: 'rgba(255,45,120,0.10)', color: '#FF2D78' }}
             >
               {countdownLabel(next.days)}
@@ -497,10 +512,10 @@ export function SeasonArc({ seasonData, onEditDates, onSetupSeason, onRaceClick 
         )}
         <button
           onClick={onEditDates ?? onSetupSeason}
-          className="text-[11px] px-2 py-0.5 rounded-full transition-colors"
+          className="text-[11px] px-2.5 py-1 rounded-full font-medium transition-colors shrink-0"
           style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text-muted)', border: 'var(--border)' }}
         >
-          View
+          Races
         </button>
       </div>
     </div>
@@ -532,13 +547,13 @@ const BIKEREG_EVENTS = [
 ]
 
 function SeasonViewModal({ season, races, onClose, onSaveDates, onAddRace, onRemoveRace, onUpdateRace }) {
+  const [activeTab, setActiveTab] = useState('my_races')
   const [start, setStart] = useState(season?.start ?? '')
   const [end,   setEnd]   = useState(season?.end   ?? '')
   const [editingDates, setEditingDates] = useState(!season?.start || !season?.end)
   const canSaveDates = start && end && new Date(start) < new Date(end)
 
   // BikeReg browser state
-  const [showBikeReg,   setShowBikeReg]   = useState(false)
   const [brSearch,      setBrSearch]      = useState('')
   const [brType,        setBrType]        = useState('All')
   const [pendingAddId,  setPendingAddId]  = useState(null)
@@ -590,34 +605,85 @@ function SeasonViewModal({ season, races, onClose, onSaveDates, onAddRace, onRem
         style={{ backgroundColor: '#FFFFFF', boxShadow: '0 8px 40px rgba(15,31,28,0.16)', maxHeight: '90vh' }}>
 
         {/* Header */}
-        <div className="px-6 pt-6 pb-4 shrink-0" style={{ borderBottom: 'var(--border)' }}>
-          <button onClick={onClose}
-            className="absolute top-5 right-5 w-7 h-7 rounded-full flex items-center justify-center text-sm"
-            style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}>✕</button>
-          {showBikeReg ? (
-            <>
-              <button onClick={() => { setShowBikeReg(false); setBrSearch(''); setBrType('All') }}
-                className="absolute top-5 left-5 w-7 h-7 rounded-full flex items-center justify-center text-sm"
-                style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text)' }}>←</button>
-              <div className="pl-8">
-                <div className="flex items-center gap-2">
-                  <p className="font-semibold text-base">Browse BikeReg</p>
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-                    style={{ backgroundColor: '#FF6B00', color: '#fff', letterSpacing: '0.02em' }}>BR</span>
+        <div className="px-6 pt-5 pb-0 shrink-0">
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <p className="font-semibold text-base">Season Races</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                {start && end
+                  ? `${new Date(start + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${new Date(end + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+                  : 'Manage your racing season'}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {start && end && (
+                <button onClick={() => setEditingDates(v => !v)}
+                  className="text-[11px] font-medium px-2.5 py-1 rounded-full"
+                  style={{ backgroundColor: 'rgba(15,31,28,0.05)', color: 'var(--color-text-muted)', border: 'var(--border)' }}>
+                  {editingDates ? 'Cancel' : 'Edit dates'}
+                </button>
+              )}
+              <button onClick={onClose}
+                className="w-7 h-7 rounded-full flex items-center justify-center text-sm"
+                style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}>✕</button>
+            </div>
+          </div>
+
+          {/* Inline date editor */}
+          {editingDates && (
+            <div className="mb-4 rounded-xl p-3 space-y-3" style={{ backgroundColor: 'rgba(15,31,28,0.03)', border: 'var(--border)' }}>
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <p className="text-[11px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Season start</p>
+                  <input type="date" value={start} onChange={e => setStart(e.target.value)}
+                    className="w-full rounded-xl px-3 py-2 text-sm outline-none"
+                    style={{ border: 'var(--border)', backgroundColor: '#FFFFFF' }} />
                 </div>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Select events to add to your season</p>
+                <div className="flex-1">
+                  <p className="text-[11px] mb-1" style={{ color: 'var(--color-text-muted)' }}>Season end</p>
+                  <input type="date" value={end} onChange={e => setEnd(e.target.value)}
+                    className="w-full rounded-xl px-3 py-2 text-sm outline-none"
+                    style={{ border: 'var(--border)', backgroundColor: '#FFFFFF' }} />
+                </div>
               </div>
-            </>
-          ) : (
-            <>
-              <p className="font-semibold text-base">Season</p>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Dates and events for your racing season</p>
-            </>
+              <button onClick={handleSaveDates}
+                className="w-full py-2 rounded-full text-sm font-semibold"
+                style={{ backgroundColor: canSaveDates ? '#0A1628' : 'rgba(15,31,28,0.1)', color: canSaveDates ? '#fff' : 'var(--color-text-muted)', cursor: canSaveDates ? 'pointer' : 'not-allowed' }}>
+                Save dates
+              </button>
+            </div>
           )}
+
+          {/* Tabs */}
+          <div className="flex gap-0" style={{ borderBottom: 'var(--border)' }}>
+            {[
+              { key: 'my_races', label: `My Races${races.length > 0 ? ` (${races.length})` : ''}` },
+              { key: 'find_races', label: 'Find Races', badge: 'BR' },
+            ].map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors relative"
+                style={{
+                  color: activeTab === tab.key ? 'var(--color-text)' : 'var(--color-text-muted)',
+                  borderBottom: activeTab === tab.key ? '2px solid #0A1628' : '2px solid transparent',
+                  marginBottom: '-1px',
+                }}
+              >
+                {tab.label}
+                {tab.badge && (
+                  <span className="text-[9px] font-bold px-1 py-px rounded"
+                    style={{ backgroundColor: '#FF6B00', color: '#fff', letterSpacing: '0.02em' }}>
+                    {tab.badge}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* BikeReg browser panel */}
-        {showBikeReg && (
+        {/* Find Races tab — BikeReg explorer */}
+        {activeTab === 'find_races' && (
           <div className="flex-1 overflow-y-auto flex flex-col">
             {/* Search + filter */}
             <div className="px-4 pt-4 pb-3 shrink-0 space-y-3" style={{ borderBottom: 'var(--border)' }}>
@@ -693,10 +759,11 @@ function SeasonViewModal({ season, races, onClose, onSaveDates, onAddRace, onRem
                         <button onClick={() => {
                           onAddRace({ name: e.name, date: e.date, location: e.location, eventType: e.eventType, priority: pendingPri, url: e.url, registered: false })
                           setPendingAddId(null)
+                          setActiveTab('my_races')
                         }}
                           className="w-full py-2 rounded-full text-sm font-semibold"
                           style={{ backgroundColor: '#0A1628', color: '#fff' }}>
-                          Confirm
+                          Add to My Races
                         </button>
                       </div>
                     )}
@@ -719,76 +786,19 @@ function SeasonViewModal({ season, races, onClose, onSaveDates, onAddRace, onRem
           </div>
         )}
 
-        {/* Scrollable body */}
-        {!showBikeReg && <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
-
-          {/* Season dates */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <p className="section-title">Season window</p>
-              {!editingDates && start && end && (
-                <button onClick={() => setEditingDates(true)}
-                  className="text-[11px] font-medium"
-                  style={{ color: 'var(--color-accent)' }}>Edit</button>
-              )}
-            </div>
-            {!editingDates && start && end ? (
-              <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl"
-                style={{ backgroundColor: 'rgba(15,31,28,0.03)', border: 'var(--border)' }}>
-                <span className="data-value text-sm">{new Date(start + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>→</span>
-                <span className="data-value text-sm">{new Date(end + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-              </div>
-            ) : (
-              <>
-                <div className="flex gap-3">
-                  <div className="flex-1">
-                    <p className="text-[11px] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>Start</p>
-                    <input type="date" value={start}
-                      onChange={e => setStart(e.target.value)}
-                      className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-                      style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }} />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-[11px] mb-1.5" style={{ color: 'var(--color-text-muted)' }}>End</p>
-                    <input type="date" value={end}
-                      onChange={e => setEnd(e.target.value)}
-                      className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-                      style={{ border: 'var(--border)', backgroundColor: 'rgba(15,31,28,0.03)' }} />
-                  </div>
-                </div>
-                <div className="flex gap-2 mt-2.5">
-                  {season?.start && season?.end && (
-                    <button onClick={() => { setStart(season.start); setEnd(season.end); setEditingDates(false) }}
-                      className="flex-1 py-2 rounded-full text-sm font-semibold"
-                      style={{ backgroundColor: 'rgba(15,31,28,0.06)', color: 'var(--color-text-muted)' }}>Cancel</button>
-                  )}
-                  <button onClick={handleSaveDates}
-                    className="flex-1 py-2 rounded-full text-sm font-semibold"
-                    style={{ backgroundColor: canSaveDates ? '#0A1628' : 'rgba(15,31,28,0.1)', color: canSaveDates ? '#fff' : 'var(--color-text-muted)', cursor: canSaveDates ? 'pointer' : 'not-allowed' }}>
-                    Save dates
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+        {/* My Races tab */}
+        {activeTab === 'my_races' && <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
 
           {/* Events list */}
           <div>
             <div className="flex items-center justify-between mb-3">
               <p className="section-title">Events &amp; Races</p>
               <div className="flex items-center gap-2">
-                <button onClick={() => setShowBikeReg(true)}
-                  className="text-[11px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1"
-                  style={{ backgroundColor: 'rgba(255,107,0,0.08)', color: '#FF6B00' }}>
-                  <span className="text-[9px] font-bold px-1 py-px rounded" style={{ backgroundColor: '#FF6B00', color: '#fff' }}>BR</span>
-                  Browse
-                </button>
                 {!adding && (
                   <button onClick={() => setAdding(true)}
                     className="text-[11px] font-semibold px-2.5 py-1 rounded-full"
                     style={{ backgroundColor: 'rgba(255,45,120,0.08)', color: '#FF2D78' }}>
-                    + Add
+                    + Add manually
                   </button>
                 )}
               </div>
@@ -939,8 +949,8 @@ function SeasonViewModal({ season, races, onClose, onSaveDates, onAddRace, onRem
           </div>
         </div>}
 
-        {/* Footer */}
-        {!showBikeReg && (
+        {/* Footer — only on My Races tab */}
+        {activeTab === 'my_races' && (
           <div className="px-6 py-4 shrink-0" style={{ borderTop: 'var(--border)' }}>
             <button onClick={onClose}
               className="w-full py-2.5 rounded-full text-sm font-semibold"
